@@ -4,7 +4,7 @@ HawkEars is a desktop program that scans audio recordings for bird sounds and ge
 This project is licensed under the terms of the MIT license.
 
 ## Installation
-1.	Install [Python](https://www.python.org/downloads/), if you do not already have it installed.
+1.	Install [Python 3](https://www.python.org/downloads/), if you do not already have it installed.
 2.	Download a copy of this repository. If you have Git installed, type:
 
 ```
