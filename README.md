@@ -48,7 +48,7 @@ After running analysis, you can view the output by opening an audio file in Auda
 
 ![](audacity-labels.png)
 
-You can click any of the labels to view or listen to that segment (all segments are currently 3 seconds long, although there is an option to merge matching adjacent labels). 
+You can click any of the labels to view or listen to that segment. All segments are currently 3 seconds long, although there is an option to merge matching adjacent labels. 
 
 To show spectrograms by default in Audacity, click Edit / Preferences / Tracks and set Default View Mode = Spectrogram. You can modify the spectrogram settings under Edit / Preferences / Tracks / Spectrograms.
 
