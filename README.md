@@ -27,7 +27,7 @@ sudo apt-get install ffmpeg
 
 On Windows, see https://www.ffmpeg.org/download.html#build-windows 
 
-5. If you have a compatible NVIDIA GPU, you can get improved performance by installing [CUDA] (https://docs.nvidia.com/cuda/). You may want to test without CUDA first though, to ensure your basic setup is correct and to collect baseline performance numbers. 
+5. If you have a compatible NVIDIA GPU, you can get improved performance by installing [CUDA](https://docs.nvidia.com/cuda/). You may want to test without CUDA first though, to ensure your basic setup is correct and to collect baseline performance numbers. 
 
 ## Analyzing Field Recordings
 TBD
