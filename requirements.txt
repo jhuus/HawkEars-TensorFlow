@@ -1,0 +1,9 @@
+librosa
+matplotlib
+numpy
+scipy
+scikit-image
+scikit-learn
+sqlite3
+tensorflow==2.5.0
+tensorflow_addons==0.13

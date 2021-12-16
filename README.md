@@ -11,7 +11,7 @@ This project is licensed under the terms of the MIT license.
  git clone https://github.com/jhuus/HawkEars
 ```
  
-Otherwise you can click on the Code link at the top, select “Download ZIP” and unzip it after it’s been downloaded.
+    Otherwise you can click on the Code link at the top, select “Download ZIP” and unzip it after it’s been downloaded.
 
 3.	Install required Python libraries:
 
@@ -25,7 +25,9 @@ pip install -r requirements.txt
 sudo apt-get install ffmpeg
 ```
 
-On Windows, see https://www.ffmpeg.org/download.html#build-windows 
+    On Windows, see https://www.ffmpeg.org/download.html#build-windows 
+
+5. If you have a compatible NVIDIA GPU, you can get improved performance by installing [CUDA] (https://docs.nvidia.com/cuda/). You may want to test without CUDA first though, to ensure your basic setup is correct and to collect baseline performance numbers. 
 
 ## Analyzing Field Recordings
 TBD
