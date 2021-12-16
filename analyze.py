@@ -176,9 +176,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', type=str, default=constants.CKPT_PATH, help='Checkpoint path. Default=data/ckpt')
     parser.add_argument('-e', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional')
     parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default')
-    parser.add_argument('-m', type=int, default=1, help='1 = Merge adjacent labels, 0 = do not. Default = 1')
+    parser.add_argument('-m', type=int, default=1, help='0 = Merge adjacent labels, 0 = do not. Default = 0')
     parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is current directory')
-    parser.add_argument('-p', type=float, default=0.90, help='Minimum match weight. Default = 0.90')
+    parser.add_argument('-p', type=float, default=0.95, help='Minimum match weight. Default = 0.95')
     parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional')
     args = parser.parse_args()
         

@@ -1,5 +1,5 @@
 ## Introduction
-HawkEars is a desktop program that scans audio recordings for bird sounds and generates [Audacity](https://www.audacityteam.org/) label files. It is inspired by [BirdNET](https://github.com/kahst/BirdNET), and intended as an improved productivity tool for processing field recordings. This repository includes the source code and a trained model for a list of species found in northeastern North America. The complete list is found [here](https://github.com/jhuus/HawkEars/blob/main/data/classes.txt). The repository does not include the raw data or spectrograms used to train the model.
+HawkEars is a desktop program that scans audio recordings for bird sounds and generates [Audacity](https://www.audacityteam.org/) label files. It is inspired by [BirdNET](https://github.com/kahst/BirdNET), and intended as an improved productivity tool for analyzing field recordings. This repository includes the source code and a trained model for a list of species found in northeastern North America. The complete list is found [here](https://github.com/jhuus/HawkEars/blob/main/data/classes.txt). The repository does not include the raw data or spectrograms used to train the model.
 
 This project is licensed under the terms of the MIT license.
 
@@ -30,7 +30,21 @@ On Windows, see https://www.ffmpeg.org/download.html#build-windows
 5. If you have a compatible NVIDIA GPU, you can get improved performance by installing [CUDA](https://docs.nvidia.com/cuda/). You may want to test without CUDA first though, to ensure your basic setup is correct and to collect baseline performance numbers. 
 
 ## Analyzing Field Recordings
-TBD
+If you don't have ready access to field recordings for testing, one good source is [xeno-canto](https://xeno-canto.org/). Recordings there are generally single-species, however, and therefore somewhat limited. A source of true field recordings, generally with multiple species, is the [Hamilton Bioacoustics Field Recordings](https://archive.org/details/hamiltonbioacousticsfieldrecordings).
+
+Once you have some recordings to test with, you can run analysis as follows:
+
+```
+python analyze.py -i <input path> -o <output path> 
+```
+
+The input path can be a directory or a reference to a single audio file, but the output path must be a directory, where the generated Audacity label files will be stored. There are also a number of optional arguments, which you can review by typing: 
+
+```
+python analyze.py -h
+```
+
+After running analysis, you can view the output by opening an audio file in Audacity, clicking File / Import / Labels and selecting the corresponding generated label file: ![](audacity-labels.png).
 
 ## Preparing to Train Your Own Model
 TBD
