@@ -1,3 +1,4 @@
+# These non-bird classes are included in training, but ignored in analysis (see ignore.txt)
 Canine
 Chipmunk
 Cicada
@@ -5,6 +6,7 @@ Noise
 Red Squirrel
 Spring Peeper
 
+# These bird species are included in the provided model
 Acadian Flycatcher
 Alder Flycatcher
 American Bittern
