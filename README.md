@@ -46,7 +46,7 @@ python analyze.py -h
 
 After running analysis, you can view the output by opening an audio file in Audacity, clicking File / Import / Labels and selecting the corresponding generated label file: 
 
-![](audacity-labels.png).
+![](audacity-labels.png)
 
 To show spectrograms by default in Audacity, click Edit / Preferences / Tracks and set Default View Mode = Spectrogram. You can modify the spectrogram settings under Edit / Preferences / Tracks / Spectrograms.
 
