@@ -44,7 +44,7 @@ The input path can be a directory or a reference to a single audio file, but the
 python analyze.py -h
 ```
 
-After running analysis, you can view the output by opening an audio file in Audacity, clicking File / Import / Labels and selecting the generated label file: 
+After running analysis, you can view the output by opening an audio file in Audacity, clicking File / Import / Labels and selecting the generated label file. Audacity should then look something like this:
 
 ![](audacity-labels.png)
 
