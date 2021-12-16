@@ -44,7 +44,11 @@ The input path can be a directory or a reference to a single audio file, but the
 python analyze.py -h
 ```
 
-After running analysis, you can view the output by opening an audio file in Audacity, clicking File / Import / Labels and selecting the corresponding generated label file: ![](audacity-labels.png).
+After running analysis, you can view the output by opening an audio file in Audacity, clicking File / Import / Labels and selecting the corresponding generated label file: 
+
+![](audacity-labels.png).
+
+To show spectrograms by default in Audacity, click Edit / Preferences / Tracks and set Default View Mode = Spectrogram. You can modify the spectrogram settings under Edit / Preferences / Tracks / Spectrograms.
 
 ## Preparing to Train Your Own Model
 TBD
