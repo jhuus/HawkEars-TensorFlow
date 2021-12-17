@@ -5,7 +5,7 @@ This project is licensed under the terms of the MIT license.
 
 ## Installation
 
-The HawkEars neural network is implemented using Tensorflow, and requires a [CUDA-compatible NVIDIA GPU](https://developer.nvidia.com/cuda-gpus), such as a Geforce RTX 10xx, Geforce RTX 20xx or Geforce RTX 30xx. 
+The HawkEars neural network is implemented using Tensorflow, and requires a [CUDA-compatible NVIDIA GPU](https://developer.nvidia.com/cuda-gpus), such as a Geforce RTX 10xx, Geforce RTX 20xx or Geforce RTX 30xx. It can be installed on Linux or Windows using the following steps: 
 
 1.	Install [Python 3](https://www.python.org/downloads/), if you do not already have it installed.
 2.	Download a copy of this repository. If you have Git installed, type:
