@@ -4,6 +4,9 @@ HawkEars is a desktop program that scans audio recordings for bird sounds and ge
 This project is licensed under the terms of the MIT license.
 
 ## Installation
+
+The HawkEars neural network is implemented using Tensorflow, and requires a [CUDA-compatible NVIDIA GPU](https://developer.nvidia.com/cuda-gpus), such as a Geforce RTX 10xx, Geforce RTX 20xx or Geforce RTX 30xx. 
+
 1.	Install [Python 3](https://www.python.org/downloads/), if you do not already have it installed.
 2.	Download a copy of this repository. If you have Git installed, type:
 
@@ -27,7 +30,7 @@ sudo apt-get install ffmpeg
 
 On Windows, see https://www.ffmpeg.org/download.html#build-windows 
 
-5. If you have a compatible NVIDIA GPU, you can get improved performance by installing [CUDA](https://docs.nvidia.com/cuda/). You may want to test without CUDA first though, to ensure your basic setup is correct and to collect baseline performance numbers. 
+5. Install [CUDA](https://docs.nvidia.com/cuda/)
 
 ## Analyzing Field Recordings
 If you don't have ready access to field recordings for testing, one good source is [xeno-canto](https://xeno-canto.org/). Recordings there are generally single-species, however, and therefore somewhat limited. A source of true field recordings, generally with multiple species, is the [Hamilton Bioacoustics Field Recordings](https://archive.org/details/hamiltonbioacousticsfieldrecordings).
@@ -69,5 +72,7 @@ to do
 
 ## Implementation Notes
 ### Neural Network
-The neural network used by HawkEars is based on the ResNeST design introduced in [this paper](https://arxiv.org/pdf/2004.08955.pdf). 
-(more to do)  
+The neural network used by HawkEars is based on the ResNeST design introduced in [this paper](https://arxiv.org/pdf/2004.08955.pdf). It is an image-classification network, trained on spectrogram images. The implementation is in model/resnest.py, which defines a ResNest class. Key parameters for sizing the model are num_stages and blocks_set. A ResNeST model consists of a sequence of stages, each of which contains one or more blocks. For example, setting num_stages=3 and blocks_set=[3,2,1] defines a model with three stages, where the first stage has 3 blocks, the second has 2 blocks and the third has 1 block. When running train.py, these are set using the -s parameter for stages, -n1 for blocks in the first stage, -n2 for blocks in the second stage, etc.   
+
+### Spectrograms
+Spectrograms are extracted from audio files in core/audio.py, then compressed and saved to a SQLite database. (more content required here).
