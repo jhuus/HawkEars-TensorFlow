@@ -33,19 +33,25 @@ On Windows, see https://www.ffmpeg.org/download.html#build-windows
 5. Install [CUDA](https://docs.nvidia.com/cuda/)
 
 ## Analyzing Field Recordings
-If you don't have ready access to field recordings for testing, one good source is [xeno-canto](https://xeno-canto.org/). Recordings there are generally single-species, however, and therefore somewhat limited. A source of true field recordings, generally with multiple species, is the [Hamilton Bioacoustics Field Recordings](https://archive.org/details/hamiltonbioacousticsfieldrecordings).
-
-Once you have some recordings to test with, you can run analysis as follows:
+To run analysis, type:
 
 ```
 python analyze.py -i <input path> -o <output path> 
 ```
 
-The input path can be a directory or a reference to a single audio file, but the output path must be a directory, where the generated Audacity label files will be stored. There are also a number of optional arguments, which you can review by typing: 
+The input path can be a directory or a reference to a single audio file, but the output path must be a directory, where the generated Audacity label files will be stored. As a quick first test, try:
+
+```
+python analyze.py -i test -o test
+```
+
+This will analyze the recording(s) included in the test directory. There are also a number of optional arguments, which you can review by typing: 
 
 ```
 python analyze.py -h
 ```
+
+If you don't have access to additional recordings for testing, one good source is [xeno-canto](https://xeno-canto.org/). Recordings there are generally single-species, however, and therefore somewhat limited. A source of true field recordings, generally with multiple species, is the [Hamilton Bioacoustics Field Recordings](https://archive.org/details/hamiltonbioacousticsfieldrecordings).
 
 After running analysis, you can view the output by opening an audio file in Audacity, clicking File / Import / Labels and selecting the generated label file. Audacity should then look something like this:
 
