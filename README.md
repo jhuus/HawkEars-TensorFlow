@@ -62,11 +62,12 @@ Currently, HawkEars identifies exactly one class (species or non-bird sound) per
 The current list is missing a number of species, especially shorebirds and waterfowl, so adding species is another future task. Also, it's missing sound types for many species. For example, flight calls and juvenile begging sounds are mostly missing. That's partly due to difficulty getting enough good recordings of these sounds, but it's certainly an area for further work. 
 
 ## Preparing to Train Your Own Model
-<to do>
+to do
 
 ## Training Your Own Model
-<to do>
+to do
 
 ## Implementation Notes
 ### Neural Network
-The neural network used by HawkEars is based on the ResNeST design introduced in [this paper](https://arxiv.org/pdf/2004.08955.pdf).   
+The neural network used by HawkEars is based on the ResNeST design introduced in [this paper](https://arxiv.org/pdf/2004.08955.pdf). 
+(more to do)  
