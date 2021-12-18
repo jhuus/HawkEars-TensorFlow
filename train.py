@@ -210,7 +210,7 @@ class Trainer:
                         suffix = i
                     
                     spec = self.x_test[i].reshape(self.x_test[i].shape[0], self.x_test[i].shape[1])
-                    util.plot_spec(spec, f'{misident_dir}/{actual_name}-{predicted_name}-{suffix}.png')
+                    util.plot_spec(spec, f'{misident_dir}/{actual_name}_{predicted_name}_{suffix}.png')
                 
         # output stats.csv containing data per class
         stats = 'class,count,TP,FP,FN,FP+FN,precision,recall,average\n'
