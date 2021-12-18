@@ -68,7 +68,7 @@ Identification is based on 3-second segments, and for some species (e.g. Brown T
 
 Currently, HawkEars identifies exactly one class (species or non-bird sound) per segment. In practice of course it's common to hear two or more birds at once. That can lead to misidentification, and is something I plan to explore in future. There are well-known image classification techniques for handling this.
 
-The current list is missing a number of species, especially shorebirds and waterfowl, so adding species is another future task. Also, it's missing sound types for many species. For example, flight calls and juvenile begging sounds are mostly missing. That's partly due to difficulty getting enough good recordings of these sounds, but it's certainly an area for further work.
+The current list is missing a number of species, especially shorebirds and waterfowl, so adding species is another future task. Also, it's missing sound types for many species. For example, flight calls and juvenile begging sounds are mostly missing. That's partly due to difficulty getting enough good recordings of these sounds, but it's certainly an area for further work. Chip calls also tend to be under-represented, so more data should be collected there.
 
 Finally, HawkEars does not currently account for date or location, which could be used to adjust the likelihood or filter out certain species. On the other hand, off-season rarities do occur, so we have to be careful about our assumptions.   
 
