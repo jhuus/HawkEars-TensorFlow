@@ -5,13 +5,6 @@ import inspect
 import os
 import sys
 
-# this is necessary before importing from a peer directory
-currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-parentdir = os.path.dirname(currentdir)
-sys.path.insert(0, parentdir) 
-
-from core import util
-
 CONVERT_TYPES = ['.wav', '.octet-stream']
 
 # command-line arguments
