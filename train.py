@@ -383,7 +383,7 @@ def cos_lr_schedule(epoch):
 if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-m', type=int, default=3, help='Model type (0 = Load existing model, 1 = ResNeSt. Default = 1.')
+    parser.add_argument('-m', type=int, default=1, help='Model type (0 = Load existing model, 1 = ResNeSt. Default = 1.')
     parser.add_argument('-s', type=int, default=1, choices=[1, 2, 3, 4], help='Number of stages (a stage is a group of layers that use the same feature map size). Default = 1, max = 4.')
     parser.add_argument('-n1', type=int, default=1, help='Number of blocks in first stage. Default = 1.')
     parser.add_argument('-n2', type=int, default=1, help='Number of blocks in second stage. Default = 1.')
