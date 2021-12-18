@@ -30,7 +30,7 @@ sudo apt-get install ffmpeg
 
 On Windows, see https://www.ffmpeg.org/download.html#build-windows 
 
-5. Install [CUDA](https://docs.nvidia.com/cuda/)
+5. Install [CUDA](https://docs.nvidia.com/cuda/), selecting a [compatible version](https://www.tensorflow.org/install/source#gpu) (e.g. CUDA 11.2 with Tensorflow 2.5).
 
 ## Analyzing Field Recordings
 To run analysis, type:
@@ -68,17 +68,36 @@ Identification is based on 3-second segments, and for some species (e.g. Brown T
 
 Currently, HawkEars identifies exactly one class (species or non-bird sound) per segment. In practice of course it's common to hear two or more birds at once. That can lead to misidentification, and is something I plan to explore in future. There are well-known image classification techniques for handling this.
 
-The current list is missing a number of species, especially shorebirds and waterfowl, so adding species is another future task. Also, it's missing sound types for many species. For example, flight calls and juvenile begging sounds are mostly missing. That's partly due to difficulty getting enough good recordings of these sounds, but it's certainly an area for further work. 
+The current list is missing a number of species, especially shorebirds and waterfowl, so adding species is another future task. Also, it's missing sound types for many species. For example, flight calls and juvenile begging sounds are mostly missing. That's partly due to difficulty getting enough good recordings of these sounds, but it's certainly an area for further work.
+
+Finally, HawkEars does not currently account for date or location, which could be used to adjust the likelihood or filter out certain species. On the other hand, off-season rarities do occur, so we have to be careful about our assumptions.   
 
 ## Preparing to Train Your Own Model
-to do
+Setting up your own model mostly consists of finding good recordings, selecting segments within the recordings, and converting them to spectrograms stored in a SQLite database (see Implementation Notes below). Basic steps are as follows:
+
+1. Create a directory per species, where recordings for the species will be stored.
+2. In the tools directory, run "extract.py -m 0" to generate labels for the recordings in directory/labels.
+3. Run "extract.py -m 1" to create a spectrogram image per label in directory/spectrograms.
+4. Generate directory/specs.txt by doing an "ls" on the spectrograms directory in Linux, or by running sortdir.py in Windows.
+5. Review the spectrograms and update specs.txt as required (mainly to delete bad ones).
+6. Run "extract.py -m 2" to insert the curated spectrograms into the database.
+
+(more content required here)
 
 ## Training Your Own Model
-to do
+Model training is performed by train.py. To see available parameters, type:
+
+```
+python train.py -h
+```
+
+(more content required here)
 
 ## Implementation Notes
 ### Neural Network
 The neural network used by HawkEars is based on the ResNeST design introduced in [this paper](https://arxiv.org/pdf/2004.08955.pdf). It is an image-classification network, trained on spectrogram images. The implementation is in model/resnest.py, which defines a ResNest class. Key parameters for sizing the model are num_stages and blocks_set. A ResNeST model consists of a sequence of stages, each of which contains one or more blocks. For example, setting num_stages=3 and blocks_set=[3,2,1] defines a model with three stages, where the first stage has 3 blocks, the second has 2 blocks and the third has 1 block. When running train.py, these are set using the -s parameter for stages, -n1 for blocks in the first stage, -n2 for blocks in the second stage, etc.   
 
 ### Spectrograms
-Spectrograms are extracted from audio files in core/audio.py, then compressed and saved to a SQLite database. (more content required here).
+Spectrograms are extracted from audio files in core/audio.py, then compressed and saved to a SQLite database. 
+
+(more content required here)
