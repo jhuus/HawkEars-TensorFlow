@@ -5,7 +5,7 @@ This project is licensed under the terms of the MIT license.
 
 ## Installation
 
-The HawkEars neural network is implemented using [Tensorflow](https://www.tensorflow.org/), and requires a [CUDA-compatible NVIDIA GPU](https://developer.nvidia.com/cuda-gpus), such as a Geforce RTX 10xx, Geforce RTX 20xx or Geforce RTX 30xx. It can be installed on Linux or Windows using the following steps: 
+The HawkEars neural network is implemented using [Tensorflow](https://www.tensorflow.org/). It can be installed on Linux or Windows using the following steps: 
 
 1.	Install [Python 3](https://www.python.org/downloads/), if you do not already have it installed.
 2.	Download a copy of this repository. If you have Git installed, type:
@@ -30,7 +30,7 @@ sudo apt-get install ffmpeg
 
 On Windows, see https://www.ffmpeg.org/download.html#build-windows 
 
-5. Install [CUDA](https://docs.nvidia.com/cuda/), selecting a [compatible version](https://www.tensorflow.org/install/source#gpu) (e.g. CUDA 11.2 with Tensorflow 2.5).
+5. If you have a [CUDA-compatible NVIDIA GPU](https://developer.nvidia.com/cuda-gpus), such as a Geforce RTX, you can gain about a 20% performance improvement in analysis by installing [CUDA](https://docs.nvidia.com/cuda/). Be sure to select a [compatible version](https://www.tensorflow.org/install/source#gpu) (e.g. CUDA 11.2 with Tensorflow 2.5). Also, read the installation instructions carefully, since additional steps are needed after running the installer.
 
 ## Analyzing Field Recordings
 To run analysis, type:
