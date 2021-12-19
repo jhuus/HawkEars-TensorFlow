@@ -5,7 +5,7 @@ This project is licensed under the terms of the MIT license.
 
 ## Installation
 
-HawkEars can be installed on Linux or Windows using the following steps: 
+To install HawkEars on Linux or Windows: 
 
 1.	Install [Python 3](https://www.python.org/downloads/), if you do not already have it installed.
 2.	Download a copy of this repository. If you have Git installed, type:
