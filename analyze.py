@@ -5,6 +5,7 @@
 import argparse
 import os
 import sys
+import time
 import warnings
 
 warnings.filterwarnings('ignore') # suppress librosa warnings
@@ -167,8 +168,14 @@ class Analyzer:
         file_list = self._get_file_list()
         self.model = keras.models.load_model(self.checkpoint_path, compile=False)
         
+        start_time = time.time()
         for file_path in file_list:
             self._analyze_file(file_path)
+            
+        elapsed = time.time() - start_time
+        minutes = int(elapsed) // 60
+        seconds = int(elapsed) % 60
+        print(f'Elapsed time for analysis = {minutes}m {seconds}s')
 
 if __name__ == '__main__':
     # command-line arguments
