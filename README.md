@@ -30,7 +30,7 @@ sudo apt-get install ffmpeg
 
 On Windows, download [this zip file](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip), then unzip it, move it somewhere and add the bin directory to your path. For instance, you could move it to "C:\Program Files\ffmpeg", and then add "C:\Program Files\ffmpeg\bin" to your path by opening Settings, entering "Environment Variables" in the "Find a Setting" box, clicking the Environment Variables button, selecting Path, clicking Edit and adding "C:\Program Files\ffmpeg\bin" at the bottom (without the quotes).
 
-5. If you have a [CUDA-compatible NVIDIA GPU](https://developer.nvidia.com/cuda-gpus), such as a Geforce RTX, you can gain about a 20% performance improvement in analysis by installing [CUDA](https://docs.nvidia.com/cuda/). Be sure to select a [compatible version](https://www.tensorflow.org/install/source#gpu) (e.g. CUDA 11.2 with Tensorflow 2.5). Also, read the installation instructions carefully, since additional steps are needed after running the installer.
+5. If you have a [CUDA-compatible NVIDIA GPU](https://developer.nvidia.com/cuda-gpus), such as a Geforce RTX, you can gain about a 20% performance improvement in analysis by installing [CUDA](https://docs.nvidia.com/cuda/). Be sure to select a [compatible version](https://www.tensorflow.org/install/source#gpu) (e.g. CUDA 11.2 with Tensorflow 2.7). Also, read the installation instructions carefully, since additional steps are needed after running the installer.
 
 ## Analyzing Field Recordings
 To run analysis, type:
