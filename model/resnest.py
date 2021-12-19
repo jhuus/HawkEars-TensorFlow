@@ -24,11 +24,42 @@ from tensorflow.keras.layers import (
     Reshape,
 )
 
+# We could do grouped convolution using Conv2D(groups=xx, ...), but as of Tensorflow 2.5 that requires
+# a GPU, even for running analysis. There is an apparent fix in 2.7 (see 
+# https://github.com/tensorflow/tensorflow/commit/7b8db6083b34520688dbc71f341f7aeaf156bf17),
+# but in my testing that still failed when no GPU was available.
+class GroupedConv2D(object):
+    # filters: Integer, the dimensionality of the output space.
+    # kernel_size: An integer or a list. If it is a single integer, then it is
+    #    same as the original Conv2D. If it is a list, then we split the channels
+    #    and perform different kernel for each group.
+    # **kwargs: other parameters passed to the original conv2d layer.
+    def __init__(self, filters, kernel_size, **kwargs):
+        self._groups = len(kernel_size)
+        self._convs = []
+        splits = self._split_channels(filters, self._groups)
+        for i in range(self._groups):
+            self._convs.append(Conv2D(filters=splits[i], kernel_size=kernel_size[i], **kwargs))
+
+    def _split_channels(self, total_filters, num_groups):
+        split = [total_filters // num_groups for _ in range(num_groups)]
+        split[0] += total_filters - sum(split)
+        return split
+
+    def __call__(self, inputs):
+        if len(self._convs) == 1:
+            return self._convs[0](inputs)
+
+        filters = inputs.shape[-1]
+        splits = self._split_channels(filters, len(self._convs))
+        x_splits = tf.split(inputs, splits, -1)
+        x_outputs = [c(x) for x, c in zip(x_splits, self._convs)]
+        x = tf.concat(x_outputs, -1)
+        return x
+
 class ResNest:
     # num_stages is from 1 to 4;
     # blocks_set gives the number of blocks per stage (so array with length >= num_stages);
-    # radix needs further investigation;
-    # groups needs further investigation;
     # setting deep_stem = True adds about 43K trainable parameters (see model differences below)
     # avg_down = True means do downsampling with AveragePooling instead of in the Conv2D layer;
     # avd_first determines whether the extra AveragePooling layer is inserted before or after the split attention block
@@ -105,8 +136,16 @@ class ResNest:
         x = input_tensor
         in_channels = input_tensor.shape[-1]
 
+        '''
+        # Tensorflow grouped convolution, which requires a GPU  
         x = Conv2D(filters=filters * self.radix, kernel_size=kernel_size, 
-                          groups=self.groups * self.radix,
+                   groups=self.groups * self.radix,
+                   padding='same', kernel_initializer=self.initializer, use_bias=False,
+                   data_format='channels_last')(x)
+        '''
+        
+        # use this version in case no GPU is available
+        x = GroupedConv2D(filters=filters * self.radix, kernel_size=[kernel_size for i in range(self.groups * self.radix)], 
                           padding='same', kernel_initializer=self.initializer, use_bias=False,
                           data_format='channels_last')(x)
 
