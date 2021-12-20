@@ -33,7 +33,7 @@ class Trainer:
     def __init__(self, parameters):
         self.parameters = parameters
         self.db = database.Database(f'data/{parameters.training}.db')
-        self.classes = util.get_file_lines(constants.CLASSES_FILE)
+        self.classes = util.get_class_list()
         self.init()
 
     # create a plot and save it to the output directory

@@ -66,7 +66,28 @@ def get_file_lines(path):
     except IOError:
         print(f'Unable to open input file {path}')
         return []
-
+    
+# return a dictionary mapping class names to banding codes, based on the classes file
+def get_class_dict(class_file_path=constants.CLASSES_FILE):
+    lines = get_file_lines(class_file_path)
+    class_dict = {}
+    for line in lines:
+        tokens = line.split(',')
+        if len(tokens) == 2:
+            class_dict[tokens[0]] = tokens[1]
+            
+    return class_dict
+    
+# return a list of class names from the classes file
+def get_class_list(class_file_path=constants.CLASSES_FILE):
+    lines = get_file_lines(class_file_path)
+    class_list = []
+    for line in lines:
+        tokens = line.split(',')
+        if len(tokens) == 2:
+            class_list.append(tokens[0])
+            
+    return class_list
 
 # return True iff given path is an audio file
 def is_audio_file(file_path):

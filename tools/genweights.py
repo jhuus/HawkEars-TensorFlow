@@ -12,10 +12,10 @@ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentfram
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir) 
 
+from core import constants
 from core import database
 from core import util
 
-CLASS_FILE = '../data/classes.txt'
 WEIGHT_FILE = '../data/weights.txt'
 
 # command-line arguments
@@ -28,7 +28,7 @@ args = parser.parse_args()
 db_name = args.f
 db = database.Database(f'../data/{db_name}.db')
 
-class_names = util.get_file_lines(CLASS_FILE)
+class_names = util.get_class_list(f'../{constants.CLASSES_FILE}')
 if len(class_names) == 0:
     print('empty class list')
     sys.exit()

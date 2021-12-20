@@ -27,7 +27,7 @@ class Label:
         self.end_time = end_time
 
 class Analyzer:
-    def __init__(self, checkpoint_path, input_path, output_path, min_prob, merge, start_time, end_time):
+    def __init__(self, checkpoint_path, input_path, output_path, min_prob, merge, start_time, end_time, use_codes):
         self.checkpoint_path = checkpoint_path
         self.input_path = input_path.strip()
         self.output_path = output_path.strip()
@@ -35,6 +35,7 @@ class Analyzer:
         self.merge = (merge == 1)
         self.start_seconds = self._get_seconds_from_time_string(start_time)
         self.end_seconds = self._get_seconds_from_time_string(end_time)
+        self.use_codes = (use_codes == 1)
         
         if self.start_seconds != None and self.end_seconds != None and self.end_seconds <= self.start_seconds:
             print('Error: end time must be greater than start time')
@@ -48,7 +49,8 @@ class Analyzer:
         elif not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
         
-        self.classes = util.get_file_lines(constants.CLASSES_FILE)
+        self.classes = util.get_class_list()
+        self.class_dict = util.get_class_dict()
         self.ignore = util.get_file_lines(constants.IGNORE_FILE)
         self.audio = audio.Audio()
         
@@ -75,8 +77,11 @@ class Analyzer:
         class_name = self.classes[predicted_class]
         if class_name in self.ignore:
             return None, None
-        
-        return predicted_class, class_name
+            
+        if self.use_codes:
+            return predicted_class, self.class_dict[class_name]
+        else:
+            return predicted_class, class_name
         
     # get a list of spectrograms for the given offsets
     def _get_specs(self, offsets):
@@ -180,6 +185,7 @@ class Analyzer:
 if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
+    parser.add_argument('-b', type=int, default=0, help='0 = Use species names in labels, 1 = Use banding codes. Default = 0')
     parser.add_argument('-c', type=str, default=constants.CKPT_PATH, help='Checkpoint path. Default=data/ckpt')
     parser.add_argument('-e', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional')
     parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default')
@@ -189,5 +195,5 @@ if __name__ == '__main__':
     parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional')
     args = parser.parse_args()
         
-    analyzer = Analyzer(args.c, args.i, args.o, args.p, args.m, args.s, args.e)
+    analyzer = Analyzer(args.c, args.i, args.o, args.p, args.m, args.s, args.e, args.b)
     analyzer.run()

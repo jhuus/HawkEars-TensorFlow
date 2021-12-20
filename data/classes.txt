@@ -1,214 +1,214 @@
 # These non-bird classes are included in training, but ignored in analysis (see ignore.txt)
-Canine
-Chipmunk
-Cicada
-Noise
-Red Squirrel
-Spring Peeper
+Canine,Canine
+Chipmunk,Chipmunk
+Cicada,Cicada
+Noise,Noise
+Red Squirrel,Red Squirrel
+Spring Peeper,Spring Peeper
 
 # These bird species are included in the provided model
-Acadian Flycatcher
-Alder Flycatcher
-American Bittern
-American Crow
-American Goldfinch
-American Kestrel
-American Pipit
-American Redstart
-American Robin
-American Three-toed Woodpecker
-American Tree Sparrow
-American Woodcock
-Baltimore Oriole
-Bank Swallow
-Barn Owl
-Barn Swallow
-Barred Owl
-Bay-breasted Warbler
-Bell's Vireo
-Belted Kingfisher
-Black-and-white Warbler
-Black-backed Woodpecker
-Black-billed Cuckoo
-Blackburnian Warbler
-Black-capped Chickadee
-Black-crowned Night Heron
-Blackpoll Warbler
-Black-throated Blue Warbler
-Black-throated Gray Warbler
-Black-throated Green Warbler
-Blue Jay
-Blue-gray Gnatcatcher
-Blue-headed Vireo
-Blue-winged Warbler
-Bobolink
-Bohemian Waxwing
-Boreal Owl
-Broad-winged Hawk
-Brown Creeper
-Brown Thrasher
-Brown-headed Cowbird
-Canada Goose
-Canada Jay
-Canada Warbler
-Cape May Warbler
-Carolina Wren
-Cedar Waxwing
-Cerulean Warbler
-Chestnut-sided Warbler
-Chipping Sparrow
-Chuck-will's-widow
-Clay-colored Sparrow
-Cliff Swallow
-Common Grackle
-Common Loon
-Common Nighthawk
-Common Raven
-Common Redpoll
-Common Yellowthroat
-Connecticut Warbler
-Cooper's Hawk
-Dark-eyed Junco
-Dickcissel
-Double-crested Cormorant
-Downy Woodpecker
-Eastern Bluebird
-Eastern Kingbird
-Eastern Meadowlark
-Eastern Phoebe
-Eastern Screech-Owl
-Eastern Towhee
-Eastern Whip-poor-will
-Eastern Wood-Pewee
-Eurasian Collared-Dove
-European Starling
-Evening Grosbeak
-Field Sparrow
-Fox Sparrow
-Golden-crowned Kinglet
-Golden-winged Warbler
-Grasshopper Sparrow
-Gray Catbird
-Gray Flycatcher
-Gray-cheeked Thrush
-Great Blue Heron
-Great Crested Flycatcher
-Great Egret
-Great Gray Owl
-Great Horned Owl
-Hairy Woodpecker
-Henslow's Sparrow
-Hermit Thrush
-Herring Gull
-Hooded Warbler
-Horned Lark
-House Finch
-House Sparrow
-House Wren
-Indigo Bunting
-Kentucky Warbler
-Killdeer
-Kirtland's Warbler
-Lark Sparrow
-Least Bittern
-Least Flycatcher
-LeConte's Sparrow
-Lincoln's Sparrow
-Loggerhead Shrike
-Long-eared Owl
-Louisiana Waterthrush
-Magnolia Warbler
-Mallard
-Marsh Wren
-Merlin
-Mourning Dove
-Mourning Warbler
-Nashville Warbler
-Nelson's Sparrow
-Northern Cardinal
-Northern Flicker
-Northern Goshawk
-Northern Harrier
-Northern Hawk Owl
-Northern Parula
-Northern Saw-whet Owl
-Northern Waterthrush
-Olive-sided Flycatcher
-Orange-crowned Warbler
-Orchard Oriole
-Osprey
-Ovenbird
-Palm Warbler
-Peregrine Falcon
-Pileated Woodpecker
-Pine Grosbeak
-Pine Siskin
-Pine Warbler
-Prairie Warbler
-Prothonotary Warbler
-Purple Finch
-Purple Martin
-Red Crossbill
-Red-bellied Woodpecker
-Red-breasted Nuthatch
-Red-eyed Vireo
-Red-headed Woodpecker
-Red-shouldered Hawk
-Red-tailed Hawk
-Red-winged Blackbird
-Ring-billed Gull
-Rock Pigeon
-Rose-breasted Grosbeak
-Rough-legged Hawk
-Ruby-crowned Kinglet
-Ruffed Grouse
-Rusty Blackbird
-Sandhill Crane
-Savannah Sparrow
-Scarlet Tanager
-Sedge Wren
-Sharp-shinned Hawk
-Short-eared Owl
-Snow Bunting
-Snowy Owl
-Song Sparrow
-Sora
-Spotted Towhee
-Summer Tanager
-Swainson's Thrush
-Swamp Sparrow
-Tennessee Warbler
-Townsend's Solitaire
-Tree Swallow
-Trumpeter Swan
-Tufted Titmouse
-Upland Sandpiper
-Varied Thrush
-Veery
-Vesper Sparrow
-Virginia Rail
-Warbling Vireo
-Western Tanager
-Whimbrel
-White-breasted Nuthatch
-White-crowned Sparrow
-White-eyed Vireo
-White-throated Sparrow
-White-winged Crossbill
-Wild Turkey
-Willow Flycatcher
-Wilson's Snipe
-Wilson's Warbler
-Winter Wren
-Wood Duck
-Wood Thrush
-Yellow Rail
-Yellow Warbler
-Yellow-bellied Flycatcher
-Yellow-bellied Sapsucker
-Yellow-billed Cuckoo
-Yellow-breasted Chat
-Yellow-headed Blackbird
-Yellow-rumped Warbler
-Yellow-throated Vireo
-Yellow-throated Warbler
+Acadian Flycatcher,ACFL
+Alder Flycatcher,ALFL
+American Bittern,AMBI
+American Crow,AMCR
+American Goldfinch,AMGO
+American Kestrel,AMKE
+American Pipit,AMPI
+American Redstart,AMRE
+American Robin,AMRO
+American Three-toed Woodpecker,ATTW
+American Tree Sparrow,ATSP
+American Woodcock,AMWO
+Baltimore Oriole,BAOR
+Bank Swallow,BANS
+Barn Owl,BANO
+Barn Swallow,BARS
+Barred Owl,BADO
+Bay-breasted Warbler,BBWA
+Bell's Vireo,BEVI
+Belted Kingfisher,BEKI
+Black-and-white Warbler,BAWW
+Black-backed Woodpecker,BBWO
+Black-billed Cuckoo,BBCU
+Blackburnian Warbler,BLBW
+Black-capped Chickadee,BCCH
+Black-crowned Night Heron,BCNH
+Blackpoll Warbler,BLPW
+Black-throated Blue Warbler,BTBW
+Black-throated Gray Warbler,BTGW
+Black-throated Green Warbler,BTNW
+Blue Jay,BLJA
+Blue-gray Gnatcatcher,BGGN
+Blue-headed Vireo,BHVI
+Blue-winged Warbler,BWWA
+Bobolink,BOBO
+Bohemian Waxwing,BOWA
+Boreal Owl,BOOW
+Broad-winged Hawk,BWHA
+Brown Creeper,BRCR
+Brown Thrasher,BRTH
+Brown-headed Cowbird,BHCO
+Canada Goose,CANG
+Canada Jay,CAJA
+Canada Warbler,CAWA
+Cape May Warbler,CMWA
+Carolina Wren,CARW
+Cedar Waxwing,CEDW
+Cerulean Warbler,CERW
+Chestnut-sided Warbler,CSWA
+Chipping Sparrow,CHSP
+Chuck-will's-widow,CWWI
+Clay-colored Sparrow,CCSP
+Cliff Swallow,CLSW
+Common Grackle,COGR
+Common Loon,COLO
+Common Nighthawk,CONI
+Common Raven,CORA
+Common Redpoll,CORE
+Common Yellowthroat,COYE
+Connecticut Warbler,CONW
+Cooper's Hawk,COHA
+Dark-eyed Junco,DEJU
+Dickcissel,DICK
+Double-crested Cormorant,DCCO
+Downy Woodpecker,DOWO
+Eastern Bluebird,EABL
+Eastern Kingbird,EAKI
+Eastern Meadowlark,EAME
+Eastern Phoebe,EAPH
+Eastern Screech-Owl,EASO
+Eastern Towhee,EATO
+Eastern Whip-poor-will,EWPW
+Eastern Wood-Pewee,EAWP
+Eurasian Collared-Dove,EUCD
+European Starling,EUST
+Evening Grosbeak,EVGR
+Field Sparrow,FISP
+Fox Sparrow,FOSP
+Golden-crowned Kinglet,GCKI
+Golden-winged Warbler,GWWA
+Grasshopper Sparrow,GRSP
+Gray Catbird,GRCA
+Gray Flycatcher,GRFL
+Gray-cheeked Thrush,GCTH
+Great Blue Heron,GBHE
+Great Crested Flycatcher,GCFL
+Great Egret,GREG
+Great Gray Owl,GGOW
+Great Horned Owl,GHOW
+Hairy Woodpecker,HAWO
+Henslow's Sparrow,HESP
+Hermit Thrush,HETH
+Herring Gull,HERG
+Hooded Warbler,HOWA
+Horned Lark,HOLA
+House Finch,HOFI
+House Sparrow,HOSP
+House Wren,HOWR
+Indigo Bunting,INBU
+Kentucky Warbler,KEWA
+Killdeer,KILL
+Kirtland's Warbler,KIWA
+Lark Sparrow,LASP
+Least Bittern,LEBI
+Least Flycatcher,LEFL
+LeConte's Sparrow,LCSP
+Lincoln's Sparrow,LISP
+Loggerhead Shrike,LOSH
+Long-eared Owl,LEOW
+Louisiana Waterthrush,LOWA
+Magnolia Warbler,MAWA
+Mallard,MALL
+Marsh Wren,MAWR
+Merlin,MERL
+Mourning Dove,MODO
+Mourning Warbler,MOWA
+Nashville Warbler,NAWA
+Nelson's Sparrow,NESP
+Northern Cardinal,NOCA
+Northern Flicker,NOFL
+Northern Goshawk,NOGO
+Northern Harrier,NOHA
+Northern Hawk Owl,NHOW
+Northern Parula,NOPA
+Northern Saw-whet Owl,NSWO
+Northern Waterthrush,NOWA
+Olive-sided Flycatcher,OSFL
+Orange-crowned Warbler,OCWA
+Orchard Oriole,OROR
+Osprey,OSPR
+Ovenbird,OVEN
+Palm Warbler,PAWA
+Peregrine Falcon,PEFA
+Pileated Woodpecker,PIWO
+Pine Grosbeak,PIGR
+Pine Siskin,PISI
+Pine Warbler,PIWA
+Prairie Warbler,PRAW
+Prothonotary Warbler,PROW
+Purple Finch,PUFI
+Purple Martin,PUMA
+Red Crossbill,RECR
+Red-bellied Woodpecker,RBWO
+Red-breasted Nuthatch,RBNU
+Red-eyed Vireo,REVI
+Red-headed Woodpecker,RHWO
+Red-shouldered Hawk,RSHA
+Red-tailed Hawk,RTHA
+Red-winged Blackbird,RWBL
+Ring-billed Gull,RBGU
+Rock Pigeon,ROPI
+Rose-breasted Grosbeak,RBGR
+Rough-legged Hawk,RLHA
+Ruby-crowned Kinglet,RCKI
+Ruffed Grouse,RUGR
+Rusty Blackbird,RUBL
+Sandhill Crane,SACR
+Savannah Sparrow,SAVS
+Scarlet Tanager,SCTA
+Sedge Wren,SEWR
+Sharp-shinned Hawk,SSHA
+Short-eared Owl,SEOW
+Snow Bunting,SNBU
+Snowy Owl,SNOW
+Song Sparrow,SOSP
+Sora,SORA
+Spotted Towhee,SPTO
+Summer Tanager,SUTA
+Swainson's Thrush,SWTH
+Swamp Sparrow,SWSP
+Tennessee Warbler,TEWA
+Townsend's Solitaire,TOSO
+Tree Swallow,TRES
+Trumpeter Swan,TRUS
+Tufted Titmouse,TUTI
+Upland Sandpiper,UPSA
+Varied Thrush,VATH
+Veery,VEER
+Vesper Sparrow,VESP
+Virginia Rail,VIRA
+Warbling Vireo,WAVI
+Western Tanager,WETA
+Whimbrel,WHIM
+White-breasted Nuthatch,WBNU
+White-crowned Sparrow,WCSP
+White-eyed Vireo,WEVI
+White-throated Sparrow,WTSP
+White-winged Crossbill,WWCR
+Wild Turkey,WITU
+Willow Flycatcher,WIFL
+Wilson's Snipe,WISN
+Wilson's Warbler,WIWA
+Winter Wren,WIWR
+Wood Duck,WODU
+Wood Thrush,WOTH
+Yellow Rail,YERA
+Yellow Warbler,YEWA
+Yellow-bellied Flycatcher,YBFL
+Yellow-bellied Sapsucker,YBSA
+Yellow-billed Cuckoo,YBCU
+Yellow-breasted Chat,YBCH
+Yellow-headed Blackbird,YHBL
+Yellow-rumped Warbler,YRWA
+Yellow-throated Vireo,YTVI
+Yellow-throated Warbler,YTWA
