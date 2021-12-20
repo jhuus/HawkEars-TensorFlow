@@ -25,7 +25,7 @@ pip install -r requirements.txt
 4.	Install ffmpeg. On Linux, type:
 
 ```
-sudo apt-get install ffmpeg
+sudo apt install ffmpeg
 ```
 
 On Windows, download [this zip file](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip), then unzip it, move it somewhere and add the bin directory to your path. For instance, you could move it to "C:\Program Files\ffmpeg", and then add "C:\Program Files\ffmpeg\bin" to your path by opening Settings, entering "Environment Variables" in the "Find a Setting" box, clicking the Environment Variables button, selecting Path, clicking Edit and adding "C:\Program Files\ffmpeg\bin" at the bottom (without the quotes).
