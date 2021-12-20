@@ -32,6 +32,12 @@ On Windows, download [this zip file](https://www.gyan.dev/ffmpeg/builds/ffmpeg-r
 
 5. If you have a [CUDA-compatible NVIDIA GPU](https://developer.nvidia.com/cuda-gpus), such as a Geforce RTX, you can gain about a 20% performance improvement in analysis by installing [CUDA](https://docs.nvidia.com/cuda/). Be sure to select a [compatible version](https://www.tensorflow.org/install/source#gpu) (e.g. CUDA 11.2 with Tensorflow 2.7). Also, read the installation instructions carefully, since additional steps are needed after running the installer.
 
+6. If you plan to train your own models, you will need to install SQLite. On Windows, follow [these instructions](https://www.sqlitetutorial.net/download-install-sqlite/). On Linux, type:
+
+```
+sudo apt install sqlite3
+```
+
 ## Analyzing Field Recordings
 To run analysis, type:
 
