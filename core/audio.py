@@ -162,7 +162,7 @@ class Audio:
     # when extracting data for training we also want to discard intervals that don't seem 
     # to have significant sounds in them, but in analysis it's better to let the neural net 
     # decide if a spectrogram contains a bird sound or not
-    def find_sounds(self, signal=None, rate=None, sound_factor=1.25, keep_empty=True):
+    def find_sounds(self, signal=None, rate=None, sound_factor=1.15, keep_empty=True):
         if signal is None:
             if self.have_signal:
                 signal = self.signal
