@@ -27,10 +27,14 @@ from core import database
 from core import util
 
 from model import model_checkpoint
+from model import efficientnet_v2
 from model import resnest
 
 class Trainer:
     def __init__(self, parameters):
+        global trainer
+        trainer = self
+
         self.parameters = parameters
         self.db = database.Database(f'data/{parameters.training}.db')
         self.classes = util.get_class_list()
@@ -63,15 +67,26 @@ class Trainer:
             # define and compile the model
             if self.parameters.type == 0:
                 model = keras.models.load_model(constants.CKPT_PATH)
-            else:
+            elif self.parameters.type == 1:
+                print('using ResNest model')
                 model_builder = resnest.ResNest(num_classes=len(self.classes), 
                         input_shape=(self.spec_height, constants.SPEC_WIDTH, 1),
                         num_stages=self.parameters.num_stages,
+                        active='swish',
                         blocks_set=self.parameters.blocks_per_stage[:self.parameters.num_stages],
                         kernel_size=self.parameters.kernel_size,
                         seed=self.parameters.seed)
                 model = model_builder.build_model()
-
+            elif self.parameters.type == 2:
+                print('using EfficientNetV2 model')
+                model = efficientnet_v2.EfficientNetV2(
+                        model_type=self.parameters.eff_config,
+                        num_classes=len(self.classes), 
+                        input_shape=(self.spec_height, constants.SPEC_WIDTH, 1),
+                        activation='swish',
+                        dropout=0.15,
+                        drop_connect_rate=0.25)
+                        
             opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
             loss = keras.losses.CategoricalCrossentropy(label_smoothing = 0.0)
             model.compile(loss = loss, optimizer = opt, metrics = 'accuracy') 
@@ -132,29 +147,31 @@ class Trainer:
         training_accuracy = history.history["accuracy"][-1]
         test_accuracy = scores[1]
         
-        # report on misidentified test spectrograms
-        predictions = model.predict(self.x_test)
-        self.analyze_predictions(predictions)
+        if self.parameters.verbosity >= 2:
+            # report on misidentified test spectrograms
+            predictions = model.predict(self.x_test)
+            self.analyze_predictions(predictions)
         
-        with open(f'{dir}/summary.txt','w') as text_output:
-            text_output.write(f'Number of stages: {self.parameters.num_stages}\n')
-            text_output.write(f'Blocks per stage: {self.parameters.blocks_per_stage}\n')
-            text_output.write(f'Batch size: {self.parameters.batch_size}\n')
-            text_output.write(f'Epochs: {self.parameters.epochs}\n')
-            text_output.write(f'Training loss: {history.history["loss"][-1]:.3f}\n')
-            text_output.write(f'Training accuracy: {training_accuracy:.3f}\n')
-            text_output.write(f'Test loss: {scores[0]:.3f}\n')
-            text_output.write(f'Final test accuracy: {test_accuracy:.3f}\n')
-            text_output.write(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
-            
-            minutes = int(elapsed) // 60
-            seconds = int(elapsed) % 60
-            text_output.write(f'Elapsed time for training = {minutes}m {seconds}s\n')
-            
+        if self.parameters.verbosity > 0:
+            with open(f'{dir}/summary.txt','w') as text_output:
+                text_output.write(f'Number of stages: {self.parameters.num_stages}\n')
+                text_output.write(f'Blocks per stage: {self.parameters.blocks_per_stage}\n')
+                text_output.write(f'Batch size: {self.parameters.batch_size}\n')
+                text_output.write(f'Epochs: {self.parameters.epochs}\n')
+                text_output.write(f'Training loss: {history.history["loss"][-1]:.3f}\n')
+                text_output.write(f'Training accuracy: {training_accuracy:.3f}\n')
+                text_output.write(f'Test loss: {scores[0]:.3f}\n')
+                text_output.write(f'Final test accuracy: {test_accuracy:.3f}\n')
+                text_output.write(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
+                
+                minutes = int(elapsed) // 60
+                seconds = int(elapsed) % 60
+                text_output.write(f'Elapsed time for training = {minutes}m {seconds}s\n')
+                
             print(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
             print(f'Elapsed time for training = {minutes}m {seconds}s\n')
             
-        return training_accuracy, test_accuracy, elapsed
+        return model_checkpoint_callback.best_val_accuracy
         
     # find and report on incorrect predictions;
     # always generate summary/stats.csv, but output misident/*.png only if verbosity >= 2;
@@ -167,12 +184,11 @@ class Trainer:
                 self.false_pos = 0
                 self.false_neg = 0
     
-        if self.parameters.verbosity >= 2:
-            misident_dir = 'misident'
-            if os.path.exists(misident_dir):
-                shutil.rmtree(misident_dir) # ensure we start with an empty folder
-                
-            os.makedirs(misident_dir)
+        misident_dir = 'misident'
+        if os.path.exists(misident_dir):
+            shutil.rmtree(misident_dir) # ensure we start with an empty folder
+            
+        os.makedirs(misident_dir)
     
         # collect data per class and output images if requested
         classes = {}
@@ -383,7 +399,8 @@ def cos_lr_schedule(epoch):
 if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-m', type=int, default=1, help='Model type (0 = Load existing model, 1 = ResNeSt. Default = 1.')
+    parser.add_argument('-m', type=int, default=1, help='Model type (0 = Load existing model, 1 = ResNeSt, 2 = EfficientNetV2. Default = 1.')
+    parser.add_argument('-m2', type=str, default='a0', help='Name of configuration to use with EfficientNetV2. Default = "a0". ')
     parser.add_argument('-s', type=int, default=1, choices=[1, 2, 3, 4], help='Number of stages (a stage is a group of layers that use the same feature map size). Default = 1, max = 4.')
     parser.add_argument('-n1', type=int, default=1, help='Number of blocks in first stage. Default = 1.')
     parser.add_argument('-n2', type=int, default=1, help='Number of blocks in second stage. Default = 1.')
@@ -405,10 +422,10 @@ if __name__ == '__main__':
     
     Parameters = namedtuple('Parameters', ['type', 'num_stages', 'blocks_per_stage', 'epochs', 'base_lr', 'batch_size', 'kernel_size', 
                             'test_portion', 'val_db', 'verbosity', 'ckpt_path', 'ckpt_min_epochs', 'ckpt_min_val_accuracy', 'copy_ckpt', 
-                            'seed', 'training', 'binary_classifier'])
+                            'seed', 'training', 'binary_classifier', 'eff_config'])
     parameters = Parameters(type = args.m, num_stages = args.s, blocks_per_stage = [args.n1, args.n2, args.n3, args.n4], epochs = args.e, base_lr=args.r, batch_size = args.b, 
                             kernel_size=args.k, test_portion = args.t, val_db = args.x, verbosity = args.v, ckpt_path=constants.CKPT_PATH, ckpt_min_epochs=args.c, 
-                            ckpt_min_val_accuracy=args.d, copy_ckpt=True, seed=args.z, training=args.f, binary_classifier=(args.y==1))
+                            ckpt_min_val_accuracy=args.d, copy_ckpt=True, seed=args.z, training=args.f, binary_classifier=(args.y==1), eff_config = args.m2)
                             
     if args.z != None:
         # these settings make results more reproducible, which is very useful when tuning parameters
@@ -421,6 +438,5 @@ if __name__ == '__main__':
         tf.config.threading.set_inter_op_parallelism_threads(1)
         tf.config.threading.set_intra_op_parallelism_threads(1)
 
-    global trainer
     trainer = Trainer(parameters)
     trainer.run()
