@@ -24,6 +24,10 @@ from tensorflow.keras.layers import (
     Reshape,
 )
 
+def hard_swish(inputs):
+    """ `out = xx * relu6(xx + 3) / 6`, arxiv: https://arxiv.org/abs/1905.02244 """
+    return inputs * tf.nn.relu6(inputs + 3) / 6
+
 # We could do grouped convolution using Conv2D(groups=xx, ...), but as of Tensorflow 2.5 that requires
 # a GPU, even for running analysis. There is an apparent fix in 2.7 (see 
 # https://github.com/tensorflow/tensorflow/commit/7b8db6083b34520688dbc71f341f7aeaf156bf17),
@@ -75,6 +79,8 @@ class ResNest:
         
         if active == 'mish':
             self.active = tfa.activations.mish
+        elif active == 'hard_swish':
+            self.active = hard_swish
         else:
             self.active = active # e.g. 'relu'
 
