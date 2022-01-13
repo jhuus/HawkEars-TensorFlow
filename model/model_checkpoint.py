@@ -1,6 +1,7 @@
 # After specified number of epochs save the model whenever val_accuracy is greater 
 # than specified amount and also greater than last saved value.
 
+import os
 import shutil
 
 import tensorflow as tf
@@ -27,5 +28,9 @@ class ModelCheckpoint(keras.callbacks.Callback):
             
             # this lets us compare results at different epochs on additional data later
             if self.copy_ckpt:
-                shutil.copytree(self.path, f'{self.path}-e{epoch + 1}-{val_accuracy:.4f}')
+                dest_path = f'{self.path}-e{epoch + 1}-{val_accuracy:.4f}'
+                if os.path.exists(dest_path):
+                    shutil.rmtree(dest_path)
+
+                shutil.copytree(self.path, dest_path)
         
