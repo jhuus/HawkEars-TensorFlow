@@ -277,7 +277,7 @@ class Audio:
         
     def load(self, path, fmin=50, fmax=12000, filter=True):
         try:
-            signal, self.rate = librosa.load(path, sr=44000, mono=True, res_type='kaiser_fast')
+            signal, self.rate = librosa.load(path, sr=44100, mono=True, res_type='kaiser_fast')
             self.fmin, self.fmax = (fmin, fmax)
             self.have_signal = True
             
