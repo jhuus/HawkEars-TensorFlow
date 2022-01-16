@@ -24,6 +24,7 @@
 import argparse
 import inspect
 import os
+import random
 import sys
 import zlib
 from pathlib import Path
@@ -49,7 +50,7 @@ class Spectrogram:
         self.offset = offset
 
 class Main:
-    def __init__(self, mode, label_type, root, source, category, subcategory, code, dbname, sound_factor, binary_classifier, keep_empty):
+    def __init__(self, mode, label_type, root, source, category, subcategory, code, dbname, sound_factor, binary_classifier, keep_empty, sparse_noise):
         self.mode = mode
         self.db = database.Database(filename=f'../data/{dbname}.db')
         self.audio = audio.Audio(path_prefix='../')
@@ -63,10 +64,32 @@ class Main:
         self.sound_factor = sound_factor
         self.binary_classifier = (binary_classifier == 1)
         self.keep_empty = (keep_empty == 1)
+        self.sparse_noise = (sparse_noise == 1)
         
     def _fatal_error(self, message):
         print(message)
         sys.exit()
+        
+    # generate sparse noise spectrograms by stripping most of the sound from the input spectrograms
+    # and randomly combining spectrograms
+    def _convert_to_sparse_noise(self, specs):
+        min_val, max_val = 0.8, 0.9
+        noise_specs = []
+        for i in range(len(specs)):
+            spec = np.clip(specs[i], min_val, max_val) / max_val
+            used_so_far = [i]
+            num_specs = random.randint(1, 3)
+            for j in range(num_specs):
+                spec_num = random.randint(0, len(specs) - 1)
+                while spec_num in used_so_far:
+                    spec_num = random.randint(0, len(specs) - 1)
+
+                spec += np.clip(specs[spec_num], min_val, max_val) / max_val
+                used_so_far.append(spec_num)
+
+            noise_specs.append(spec / np.max(spec))
+        
+        return noise_specs 
         
     def _generate_labels(self):
         print(f'generate labels')
@@ -133,23 +156,32 @@ class Main:
         for i in range(len(offsets)):
             specs.append(Spectrogram(raw_specs[i], f'{prefix}-{offsets[i]}', recording_id, offsets[i]))
             
-        return specs
+        return specs, raw_specs
         
     # insert spectrograms into the database
     def _import_spectrograms(self):
         print(f'import spectrograms')
         audio_files = util.get_audio_files(self.root)
+        specs = []
+        raw_specs = []
         for audio_file in audio_files:
             filename = os.path.basename(audio_file)
             print(f'processing {filename}')
             offsets = self._get_offsets(filename)
-            specs = self._get_spectrograms(audio_file, offsets)        
+            curr_specs, curr_raw_specs = self._get_spectrograms(audio_file, offsets)
+            specs.extend(curr_specs)
+            raw_specs.extend(curr_raw_specs)
+
+        if self.sparse_noise:
+            raw_specs = self._convert_to_sparse_noise(raw_specs)
+            for i in range(len(specs)):
+                specs[i].spec = raw_specs[i]
             
-            for spec in specs:
-                if not spec.spec is None:
-                    # convert to bytes, zip it and insert in database
-                    compressed = util.compress_spectrogram(spec.spec)
-                    self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset)
+        for spec in specs:
+            if not spec.spec is None:
+                # convert to bytes, zip it and insert in database
+                compressed = util.compress_spectrogram(spec.spec)
+                self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset)
         
     def _plot_spectrograms(self):
         print(f'plot spectrograms')
@@ -157,14 +189,23 @@ class Main:
             os.makedirs(self.spec_path)
     
         audio_files = util.get_audio_files(self.root)
+        specs = []
+        raw_specs = []
         for audio_file in audio_files:
             filename = os.path.basename(audio_file)
             print(f'processing {filename}')
             offsets = self._get_offsets(filename)
-            specs = self._get_spectrograms(audio_file, offsets)        
-            for spec in specs:
-                if not spec.spec is None:
-                    util.plot_spec(spec.spec, os.path.join(self.spec_path, f'{spec.name}.png'), binary_classifier=self.binary_classifier)
+            curr_specs, curr_raw_specs = self._get_spectrograms(audio_file, offsets)
+            specs.extend(curr_specs)
+            raw_specs.extend(curr_raw_specs)
+
+        if self.sparse_noise:
+            raw_specs = self._convert_to_sparse_noise(raw_specs)
+            for i in range(len(specs)):
+                specs[i].spec = raw_specs[i]
+        
+        for spec in specs:
+            util.plot_spec(spec.spec, os.path.join(self.spec_path, f'{spec.name}.png'), binary_classifier=self.binary_classifier)
         
     # In this case (m=3) the root folder contains audio files for multiple species, where each file name
     # has the species code as a prefix (e.g. BAWW_XC213571.mp3).
@@ -345,8 +386,9 @@ if __name__ == '__main__':
     parser.add_argument('-f', type=str, default='training', help='Database name. Default = training')
     parser.add_argument('-g', type=float, default=2.5, help='Factor for call to find_sounds when t = 0. Default = 2.5')
     parser.add_argument('-e', type=int, default=0, help='If e = 1, generate labels even if empty (no apparent sound). Default = 0.')
+    parser.add_argument('-n', type=int, default=0, help='If n = 1, convert spectrograms to sparse noise. Default = 0.')
     parser.add_argument('-x', type=int, default=0, help='If x = 1, extract spectrograms for binary classifier. Default = 0.')
     
     args = parser.parse_args()
 
-    Main(args.m, args.t, args.d, args.a, args.b, args.s, args.c, args.f, args.g, args.x, args.e).run()
+    Main(args.m, args.t, args.d, args.a, args.b, args.s, args.c, args.f, args.g, args.x, args.e, args.n).run()
