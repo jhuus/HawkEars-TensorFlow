@@ -3,10 +3,14 @@
 import os
 import zlib
 
+import cv2
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 
 from core import constants
+
+matplotlib.use('tkagg')
 
 AUDIO_EXTS = [
   '.3gp', '.3gpp', '.8svx', '.aa', '.aac', '.aax', '.act', '.aiff', '.alac', '.amr', '.ape', '.au', 
@@ -14,6 +18,27 @@ AUDIO_EXTS = [
   '.mp3', '.mpc', '.mpga', '.msv', '.nmf', '.octet-stream', '.ogg', '.oga', '.mogg', '.opus', '.org', 
   '.ra', '.rm', '.raw', '.rf64', '.sln', '.tta', '.voc', '.vox', '.wav', '.wma', '.wv', '.webm', '.x-m4a',
 ]
+
+# center a spectrogram horizontally
+def center_spec(image):
+    image = image.reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH))
+    centered = image.transpose()
+    width = centered.shape[0]
+    midpoint = int(width / 2)
+    half = centered.sum() / 2
+    sum = 0
+    for i in range(width):
+        sum += np.sum(centered[i])
+        if sum >= half:
+            centered = np.roll(centered, midpoint - i, axis=0)
+            if i < midpoint:
+                centered[:(midpoint - i), :] = 0
+            else:
+                centered[width - (i - midpoint):, :] = 0
+            
+            break
+    
+    return centered.transpose()
 
 # compress a spectrogram in preparation for inserting into database
 def compress_spectrogram(data):
@@ -99,7 +124,7 @@ def is_audio_file(file_path):
     return False
     
 # save a plot of a spectrogram
-def plot_spec(spec, path, binary_classifier=False):
+def plot_spec(spec, path, binary_classifier=False, gray_scale=False):
     if spec.ndim == 3:
         if binary_classifier:
             spec = spec.reshape((constants.BINARY_SPEC_HEIGHT, constants.SPEC_WIDTH))
@@ -107,6 +132,17 @@ def plot_spec(spec, path, binary_classifier=False):
             spec = spec.reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH))
 
     plt.clf() # clear any existing plot data
-    plt.pcolormesh(spec, shading='gouraud')
-    plt.savefig(path)
+    
+    if gray_scale:
+        spec = np.flipud(spec)
+        spec = cv2.resize(spec, dsize=(384, 160), interpolation=cv2.INTER_CUBIC) # make it taller so it's easier to view
+        plt.imshow(spec, cmap='gray', vmin=0, vmax=1)
+        plt.axis('off')
+        plt.savefig(path, bbox_inches='tight', pad_inches = 0)
+        plt.close()
+    else:
+        plt.pcolormesh(spec, shading='gouraud')
+        plt.savefig(path)
+        plt.close()
+    
     
