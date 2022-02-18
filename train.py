@@ -28,6 +28,7 @@ from core import util
 
 from model import model_checkpoint
 from model import efficientnet_v2
+from model import resnest
 
 class Trainer:
     def __init__(self, parameters):
@@ -64,9 +65,11 @@ class Trainer:
         strategy = tf.distribute.get_strategy()
         with strategy.scope():
             # define and compile the model
+            
             if self.parameters.type == 0:
                 model = keras.models.load_model(constants.CKPT_PATH)
-            else:
+            elif self.parameters.type == 1:
+                print('creating EfficientNetV2 model')
                 model = efficientnet_v2.EfficientNetV2(
                         model_type=self.parameters.eff_config,
                         num_classes=len(self.classes), 
@@ -74,9 +77,17 @@ class Trainer:
                         activation='swish',
                         dropout=0.15,
                         drop_connect_rate=0.25)
+            elif self.parameters.type == 2:
+                print('creating ResNeST model')
+                model_builder = resnest.ResNest(num_classes=len(self.classes), 
+                        input_shape=(self.spec_height, constants.SPEC_WIDTH, 1),
+                        num_stages=self.parameters.num_stages,
+                        blocks_set=self.parameters.blocks_per_stage[:self.parameters.num_stages],
+                        seed=self.parameters.seed)
+                model = model_builder.build_model()
                         
             opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
-            loss = keras.losses.CategoricalCrossentropy(label_smoothing = 0.0)
+            loss = keras.losses.CategoricalCrossentropy(label_smoothing = 0.13)
             model.compile(loss = loss, optimizer = opt, metrics = 'accuracy') 
 
         # create output directory
@@ -94,7 +105,7 @@ class Trainer:
         # initialize callbacks
         lr_scheduler = keras.callbacks.LearningRateScheduler(cos_lr_schedule) 
         model_checkpoint_callback = model_checkpoint.ModelCheckpoint(
-            self.parameters.ckpt_path, self.parameters.ckpt_min_epochs, self.parameters.ckpt_min_val_accuracy, self.parameters.copy_ckpt)
+            constants.CKPT_PATH, self.parameters.ckpt_min_epochs, self.parameters.ckpt_min_val_accuracy, self.parameters.copy_ckpt)
         callbacks = [lr_scheduler, model_checkpoint_callback] 
           
         # create the training and test datasets
@@ -295,6 +306,9 @@ class Trainer:
         self.test_indices = []
         for i in range(len(self.classes)):
             total = self.db.get_num_spectrograms(self.classes[i])
+            if self.parameters.max_specs > 0 and self.parameters.max_specs < total:
+                total = self.parameters.max_specs
+            
             num_spectrograms.append(total)
             self.test_indices.append(self.get_test_indices(total))
 
@@ -345,6 +359,9 @@ class Trainer:
                 specs = self.db.get_spectrograms_by_recording_id(recording_id)
                
                 for j in range(len(specs)):
+                    if self.parameters.max_specs > 0 and spec_index == self.parameters.max_specs:
+                        break
+                
                     spec, offset = specs[j]
                     if spec_index in self.test_indices[i].keys():
                         # test spectrograms are expanded here
@@ -384,28 +401,36 @@ def cos_lr_schedule(epoch):
     return lr
 
 if __name__ == '__main__':
+
     # command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-m', type=int, default=1, help='Model type (0 = Load existing model, 1 = EfficientNetV2. Default = 1.')
-    parser.add_argument('-m2', type=str, default='a0', help='Name of configuration to use with EfficientNetV2. Default = "a0". ')
+    parser.add_argument('-a', type=int, default=0, help='Maximum spectrograms per class but 0 = no limit. Default = 0.')
     parser.add_argument('-b', type=int, default=32, help='Batch size. Default = 32.')
     parser.add_argument('-c', type=int, default=10, help='Minimum epochs before saving checkpoint. Default = 10.')
     parser.add_argument('-d', type=float, default=0.95, help='Minimum validation accuracy before saving checkpoint. Default = 0.95.')
     parser.add_argument('-e', type=int, default=10, help='Number of epochs. Default = 10.')
     parser.add_argument('-f', type=str, default='training', help='Name of training database. Default = training.')
+    parser.add_argument('-m', type=int, default=1, help='Model type (0 = Load existing model, 1 = EfficientNetV2, 2 = ResNeST. Default = 1.')
+    parser.add_argument('-m2', type=str, default='a0', help='For EfficientNetV2, name of configuration to use. Default = "a0". ')
+    parser.add_argument('-n1', type=int, default=1, help='For ResNeST, number of blocks in first stage. Default = 1.')
+    parser.add_argument('-n2', type=int, default=1, help='For ResNeST, number of blocks in second stage. Default = 1.')
+    parser.add_argument('-n3', type=int, default=1, help='For ResNeST, number of blocks in third stage. Default = 1.')
+    parser.add_argument('-n4', type=int, default=1, help='For ResNeST, number of blocks in fourth stage. Default = 1.')
     parser.add_argument('-r', type=float, default=.006, help='Base learning rate. Default = .006')
+    parser.add_argument('-s', type=int, default=1, choices=[1, 2, 3, 4], help='For ResNeST, number of stages (a stage is a group of layers that use the same feature map size). Default = 1, max = 4.')
     parser.add_argument('-t', type=float, default=.01, help='Test portion. Default = .01')
     parser.add_argument('-v', type=int, default=1, help='Verbosity (0-2, 0 omits output graphs, 2 plots misidentified test spectrograms, 3 adds graph of model). Default = 1.')
     parser.add_argument('-x', type=str, default='', help='Name(s) of extra validation databases. "abc" means load "abc.db". "abc,def" means load both databases for validation. Default = "". ')
     parser.add_argument('-y', type=int, default=0, help='If y = 1, extract spectrograms for binary classifier. Default = 0.')
     parser.add_argument('-z', type=int, default=None, help='Integer seed for random number generators. Default = None (do not). If specified, other settings to increase repeatability will also be enabled, which slows down training.')
+    
     args = parser.parse_args()
     
-    Parameters = namedtuple('Parameters', ['type', 'epochs', 'base_lr', 'batch_size', 'test_portion', 'val_db', 'verbosity', 'ckpt_path', 
-                            'ckpt_min_epochs', 'ckpt_min_val_accuracy', 'copy_ckpt', 'seed', 'training', 'binary_classifier', 'eff_config'])
-    parameters = Parameters(type = args.m, epochs = args.e, base_lr=args.r, batch_size = args.b, test_portion = args.t, val_db = args.x, 
-                            verbosity = args.v, ckpt_path=constants.CKPT_PATH, ckpt_min_epochs=args.c, ckpt_min_val_accuracy=args.d, copy_ckpt=False, seed=args.z, 
-                            training=args.f, binary_classifier=(args.y==1), eff_config = args.m2)
+    Parameters = namedtuple('Parameters', ['max_specs', 'batch_size', 'ckpt_min_epochs', 'ckpt_min_val_accuracy', 'epochs', 'val_db', 'type', 'eff_config', 
+                            'blocks_per_stage', 'base_lr', 'num_stages', 'test_portion', 'verbosity', 'binary_classifier', 'training', 'copy_ckpt', 'seed'])
+    parameters = Parameters(max_specs = args.a, batch_size = args.b, ckpt_min_epochs=args.c, ckpt_min_val_accuracy=args.d, epochs = args.e, training=args.f, 
+                            type = args.m, eff_config = args.m2, blocks_per_stage = [args.n1, args.n2, args.n3, args.n4],  base_lr=args.r, num_stages = args.s,
+                            test_portion = args.t, verbosity = args.v, binary_classifier=(args.y==1), val_db = args.x, seed=args.z, copy_ckpt=False)
                             
     if args.z != None:
         # these settings make results more reproducible, which is very useful when tuning parameters
@@ -417,6 +442,7 @@ if __name__ == '__main__':
         tf.random.set_seed(args.z)
         tf.config.threading.set_inter_op_parallelism_threads(1)
         tf.config.threading.set_intra_op_parallelism_threads(1)
+
 
     trainer = Trainer(parameters)
     trainer.run()
