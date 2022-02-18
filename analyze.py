@@ -27,21 +27,18 @@ class Label:
         self.end_time = end_time
 
 class Analyzer:
-    def __init__(self, checkpoint_path, input_path, output_path, min_prob, merge, start_time, end_time, use_codes, segmentation_mode, 
-                 check_shifted, sound_factor, shift_offset, use_ignore_file):
+    def __init__(self, checkpoint_path, class_file_path, input_path, output_path, min_prob, start_time, 
+                 end_time, use_codes, segmentation_mode, use_ignore_file):
                  
         self.checkpoint_path = checkpoint_path
+        self.class_file_path = class_file_path
         self.input_path = input_path.strip()
         self.output_path = output_path.strip()
         self.min_prob = min_prob
-        self.merge = (merge == 1)
         self.start_seconds = self._get_seconds_from_time_string(start_time)
         self.end_seconds = self._get_seconds_from_time_string(end_time)
         self.use_codes = (use_codes == 1)
         self.segmentation_mode = segmentation_mode
-        self.check_shifted = (check_shifted)
-        self.sound_factor = sound_factor
-        self.shift_offset = shift_offset
         self.use_ignore_file = (use_ignore_file == 1)
         
         if self.start_seconds != None and self.end_seconds != None and self.end_seconds <= self.start_seconds:
@@ -56,8 +53,8 @@ class Analyzer:
         elif not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
         
-        self.classes = util.get_class_list()
-        self.class_dict = util.get_class_dict()
+        self.classes = util.get_class_list(class_file_path=self.class_file_path)
+        self.class_dict = util.get_class_dict(class_file_path=self.class_file_path)
         self.ignore = util.get_file_lines(constants.IGNORE_FILE)
         self.audio = audio.Audio()
         
@@ -77,18 +74,18 @@ class Analyzer:
         seconds += int(tokens[-1])
         return seconds
         
-    # given the predictions for a class, return the predicted class, ignoring classes in the ignore file;
-    # if check_prediction is not None, check if they match
-    def _get_predicted_class(self, predictions, check_predictions):
-        predicted_class = np.argmax(predictions)
+    # given the predictions for a class, return the predicted class, ignoring classes in the ignore file
+    def _get_predicted_class(self, i, predictions):
+        predicted_class = np.argmax(predictions[i])
         class_name = self.classes[predicted_class]
         if self.use_ignore_file and class_name in self.ignore:
             return None, None
-            
-        if check_predictions is not None:
-            check_class = np.argmax(check_predictions)
-            if predicted_class != check_class:
-                # doesn't match a slightly shifted spectrogram, so probably spurious
+
+        if self.segmentation_mode == 0 and i not in [0, len(predictions) - 1]:
+            check_left_class = np.argmax(predictions[i - 1])
+            check_right_class = np.argmax(predictions[i + 1])
+            if predicted_class != check_left_class and predicted_class != check_right_class:
+                # doesn't match either adjacent (and overlapping) spectrogram, so probably spurious
                 return None, None
             
         if self.use_codes:
@@ -131,44 +128,27 @@ class Analyzer:
             end_seconds = self.end_seconds
 
         if self.segmentation_mode == 0:
+            offsets = np.arange(start_seconds, end_seconds, 1.0).tolist()
+        else:
             offsets = np.arange(start_seconds, end_seconds, 3.0).tolist()
-        elif self.segmentation_mode == 1:
-            offsets = np.arange(start_seconds, end_seconds, 1.5).tolist()
-        elif self.segmentation_mode == 2:
-            offsets = self.audio.find_sounds(sound_factor=self.sound_factor)
         
         specs = self._get_specs(offsets)
         predictions = self.model.predict(specs)
 
-        if self.check_shifted:
-            shifted_offsets = []
-            for offset in offsets:
-                shifted_offsets.append(offset + self.shift_offset)
-                
-            shifted_specs = self._get_specs(shifted_offsets)
-            shifted_predictions = self.model.predict(shifted_specs)
-
         labels = []
         prev_label = None
         for i in range(len(predictions)):
-            if self.check_shifted and i < len(shifted_predictions):
-                check_predictions = shifted_predictions[i]
-            else:
-                check_predictions = None
-        
-            predicted_class, class_name = self._get_predicted_class(predictions[i], check_predictions)
+            predicted_class, class_name = self._get_predicted_class(i, predictions)
             if predicted_class is None:
                 continue
             
             probability = predictions[i][predicted_class]
             if probability >= self.min_prob:
-
                 end_time = offsets[i]+constants.SEGMENT_LEN
-                
-                if self.merge and prev_label != None and prev_label.class_name == class_name \
+                if self.segmentation_mode == 0 and prev_label != None and prev_label.class_name == class_name \
                     and prev_label.end_time >= offsets[i]:
                     
-                    # extend the previous label's end time, using the higher probability
+                    # extend the previous label's end time (i.e. merge)
                     prev_label.end_time = end_time
                     prev_label.probability = max(probability, prev_label.probability)
                 else:
@@ -219,18 +199,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-b', type=int, default=0, help='0 = Use species names in labels, 1 = Use banding codes. Default = 0')
     parser.add_argument('-c', type=str, default=constants.CKPT_PATH, help='Checkpoint path. Default=data/ckpt')
+    parser.add_argument('-d', type=str, default=constants.CLASSES_FILE, help='Class file path. Default=data/classes.txt')
     parser.add_argument('-e', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional')
-    parser.add_argument('-g', type=int, default=2, help='Segmentation mode. 0 = every 3 seconds, 1 = every 1.5 seconds, 2 = detect sounds and segment heuristically. Default = 2')
-    parser.add_argument('-k', type=int, default=0, help='1 = Check against slightly shifted segments, and include only if they match. Default = 0')
     parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default')
-    parser.add_argument('-m', type=int, default=0, help='1 = Merge adjacent labels, 0 = do not. Default = 0')
+    parser.add_argument('-m', type=int, default=0, help='Segmentation mode. 0 = every 1 second (and compare & merge neighbours), 1 = every 3 seconds. Default = 0')
     parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is current directory')
-    parser.add_argument('-p', type=float, default=0.95, help='Minimum match weight. Default = 0.95')
-    parser.add_argument('-p2', type=float, default=1.2, help='Sound factor when finding sounds with g = 2. Default = 1.2')
-    parser.add_argument('-p3', type=float, default=0.3, help='Seconds offset for shifted spectrograms with k = 1. Default = 0.3')
+    parser.add_argument('-p', type=float, default=0.75, help='Minimum match weight. Default = 0.75')
     parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional')
     parser.add_argument('-x', type=int, default=1, help='1 = Ignore classes listed in ignore.txt, 0 = do not. Default = 1')
     args = parser.parse_args()
         
-    analyzer = Analyzer(args.c, args.i, args.o, args.p, args.m, args.s, args.e, args.b, args.g, args.k, args.p2, args.p3, args.x)
+    analyzer = Analyzer(args.c, args.d, args.i, args.o, args.p, args.s, args.e, args.b, args.m, args.x)
     analyzer.run()
