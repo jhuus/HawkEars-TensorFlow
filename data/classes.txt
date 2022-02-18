@@ -1,10 +1,11 @@
-# These non-bird classes are included in training, but ignored in analysis (see ignore.txt)
+# These classes are included in training, but ignored in analysis (see ignore.txt)
 Canine,Canine
 Chipmunk,Chipmunk
 Cicada,Cicada
 Eastern Gray Squirrel,Eastern Gray Squirrel
 Noise,Noise
 Red Squirrel,Red Squirrel
+Rooster,Rooster
 Spring Peeper,Spring Peeper
 
 # These bird species are included in the provided model
