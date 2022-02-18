@@ -1,9 +1,10 @@
 # Audio processing, especially extracting and returning 3-second spectrograms.
 # This code was copied from https://github.com/kahst/BirdNET and then substantially modified.
 
+import ffmpeg
 import numpy as np
-import librosa
 import scipy
+import scipy.signal
 import math
 import sys
 
@@ -275,17 +276,31 @@ class Audio:
 
         return specs
         
-    def load(self, path, fmin=50, fmax=12000, filter=True):
+    def load(self, path, fmin=50, fmax=12000, rate=44100, filter=True):
         try:
-            signal, self.rate = librosa.load(path, sr=44100, mono=True, res_type='kaiser_fast')
-            self.fmin, self.fmax = (fmin, fmax)
+            # on some systems librosa calls audioread which calls gstreamer, which
+            # does a poor job decoding mp3's, so use ffmpeg instead
+            bytes, _ = (ffmpeg
+                .input(path)
+                .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{rate}')
+                .overwrite_output()
+                .run(capture_stdout=True, quiet=True))
+
+            # convert byte array to float array, and then to a numpy array
+            scale = 1.0 / float(1 << ((16) - 1))
+            fmt = "<i{:d}".format(2)
+            floats = scale * np.frombuffer(bytes, fmt).astype(np.float32)
+            signal = np.asarray(floats)
+
+            self.fmin, self.fmax, self.rate = (fmin, fmax, rate)
             self.have_signal = True
             
             if filter:
                 self.signal = self._apply_bandpass_filter(signal, self.rate, fmin, fmax)
             else:
                 self.signal = signal
-        except:
+        except BaseException as e:
+            print(f'Caught exception loading {path}: {str(e)}')
             self.signal = None
             self.rate, self.fmin, self.fmax = (1, 1, 1)
             self.have_signal = False
