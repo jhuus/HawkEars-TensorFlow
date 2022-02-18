@@ -82,7 +82,8 @@ class Database:
                     ID INTEGER PRIMARY KEY AUTOINCREMENT,
                     RecordingID INTEGER NOT NULL,
                     Value BLOB NOT NULL,
-                    Offset REAL)
+                    Offset REAL,
+                    Type TEXT)
             '''
             cursor.execute(query)
             
@@ -587,14 +588,14 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database insert_recording: {e}')
         
-    def insert_spectrogram(self, recording_id, value, offset):
+    def insert_spectrogram(self, recording_id, value, offset, type=''):
         try:
             query = '''
-                INSERT INTO Spectrogram (RecordingID, Value, Offset)
-                Values (?, ?, ?)
+                INSERT INTO Spectrogram (RecordingID, Value, Offset, Type)
+                Values (?, ?, ?, ?)
             '''
             cursor = self.conn.cursor()
-            cursor.execute(query, (recording_id, value, offset))
+            cursor.execute(query, (recording_id, value, offset, type))
             self.conn.commit()
             return cursor.lastrowid
         except sqlite3.Error as e:
