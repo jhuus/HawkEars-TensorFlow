@@ -264,13 +264,21 @@ def EfficientNetV2(
 # Configurations a## were added for HawkEars; 
 # Using squeeze-and-excitation blocks (use_ses=1) makes the model smaller but slower
 BLOCK_CONFIGS = {
-    "a0": { # custom 2-layer (~33K trainable parameters)
+    "a0": { # custom 2-layer (~308K trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 1],
         "out_channels": [8, 16],
         "depths": [1, 2],
         "strides": [1, 2],
         "use_ses": [0, 0],
+    },
+    "a0b": { # custom 2-layer (~44K trainable parameters)
+        "first_conv_filter": 32,
+        "expands": [1, 1],
+        "out_channels": [8, 16],
+        "depths": [1, 2],
+        "strides": [1, 2],
+        "use_ses": [1, 1],
     },
     "a1": { # custom 2-layer (~78K trainable parameters)
         "first_conv_filter": 32,
