@@ -138,6 +138,14 @@ class Analyzer:
         labels = []
         prev_label = None
         for i in range(len(predictions)):
+            '''
+            # this can be handy when trying to understand a prediction
+            print('\n', offsets[i])
+            for j in range(len(predictions[i])):
+                if predictions[i][j] > .01:
+                    print(predictions[i][j], self.classes[j])
+            '''
+
             predicted_class, class_name = self._get_predicted_class(i, predictions)
             if predicted_class is None:
                 continue
@@ -204,7 +212,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default')
     parser.add_argument('-m', type=int, default=0, help='Segmentation mode. 0 = every 1 second (and compare & merge neighbours), 1 = every 3 seconds. Default = 0')
     parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is current directory')
-    parser.add_argument('-p', type=float, default=0.75, help='Minimum match weight. Default = 0.75')
+    parser.add_argument('-p', type=float, default=0.70, help='Minimum confidence level. Default = 0.65')
     parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional')
     parser.add_argument('-x', type=int, default=1, help='1 = Ignore classes listed in ignore.txt, 0 = do not. Default = 1')
     args = parser.parse_args()
