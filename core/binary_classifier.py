@@ -26,7 +26,7 @@ class BinaryClassifier:
         self.specs = np.zeros((LENGTH_INCR, constants.BINARY_SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
 
     # return a list containing True if the corresponding spectrogram contains low frequency noise
-    def check_for_noise(self, specs, low_idx, high_idx, low_mult, min_confidence=0.93):
+    def check_for_noise(self, specs, low_idx, high_idx, low_mult, min_confidence=0.7):
         # initialize return values
         ret_vals = [False for i in range(len(specs))] 
         high_maxes = [0 for i in range(len(specs))] 
