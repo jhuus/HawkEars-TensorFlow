@@ -264,47 +264,15 @@ def EfficientNetV2(
 # Configurations a## were added for HawkEars; 
 # Using squeeze-and-excitation blocks (use_ses=1) makes the model smaller but slower
 BLOCK_CONFIGS = {
-    "a0": { # custom 2-layer (~308K trainable parameters)
+    "a0": {  # custom 3-layer (fastest option)
         "first_conv_filter": 32,
-        "expands": [1, 1],
-        "out_channels": [8, 16],
-        "depths": [1, 2],
-        "strides": [1, 2],
-        "use_ses": [0, 0],
-    },
-    "a0b": { # custom 2-layer (~44K trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 1],
-        "out_channels": [8, 16],
-        "depths": [1, 2],
-        "strides": [1, 2],
-        "use_ses": [1, 1],
-    },
-    "a1": { # custom 2-layer (~78K trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 2],
-        "out_channels": [16, 32],
-        "depths": [1, 2],
-        "strides": [1, 2],
-        "use_ses": [0, 0],
-    },
-    "a2": { # custom 2-layer (~105K trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 4],
-        "out_channels": [16, 32],
-        "depths": [1, 2],
-        "strides": [1, 2],
-        "use_ses": [0, 0],
-    },
-    "a3": { # custom 3-layer (~260K trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4],
-        "out_channels": [16, 32, 48],
+        "expands": [1, 2, 4],
+        "out_channels": [8, 16, 32],
         "depths": [1, 2, 2],
         "strides": [1, 2, 2],
-        "use_ses": [0, 0, 0],
+        "use_ses": [0, 0, 1],
     },
-    "a4": {  # custom 4-layer (~374K trainable parameters)
+    "a1": {  # custom 4-layer (~374K trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 2, 4, 4],
         "out_channels": [16, 32, 48, 64],
@@ -312,15 +280,7 @@ BLOCK_CONFIGS = {
         "strides": [1, 2, 2, 2],
         "use_ses": [0, 0, 0, 1],
     },
-    "a5": {  # custom 4-layer (~553K trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4],
-        "out_channels": [16, 32, 48, 96],
-        "depths": [1, 2, 2, 3],
-        "strides": [1, 2, 2, 2],
-        "use_ses": [0, 0, 0, 1],
-    },
-    "a6": {  # custom 4-layer (~1.04M trainable parameters)
+    "a2": {  # custom 4-layer (~1.04M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 6],
         "out_channels": [16, 32, 64, 128],
@@ -328,7 +288,7 @@ BLOCK_CONFIGS = {
         "strides": [1, 2, 2, 2],
         "use_ses": [0, 0, 0, 1],
     },
-    "a7": {  # custom 5-layer (~1.5M trainable parameters)
+    "a3": {  # custom 5-layer (~1.5M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 4, 6],
         "out_channels": [16, 32, 48, 96, 112],
@@ -336,11 +296,51 @@ BLOCK_CONFIGS = {
         "strides": [1, 2, 2, 2, 1],
         "use_ses": [0, 0, 0, 1, 1],
     },
-    "a8": {  # custom 6-layer (~2M trainable parameters)
+    "a4": {  # custom 6-layer (~2M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 4, 4, 6],
         "out_channels": [16, 32, 48, 96, 96, 112],
         "depths": [1, 2, 2, 3, 5, 5],
+        "strides": [1, 2, 2, 2, 1, 2],
+        "use_ses": [0, 0, 0, 1, 1, 1],
+    },
+    "a5": {  # custom 6-layer (~2.2M trainable parameters)
+        "first_conv_filter": 32,
+        "expands": [1, 4, 4, 4, 4, 6],
+        "out_channels": [16, 32, 48, 96, 96, 112],
+        "depths": [1, 2, 2, 3, 5, 6],
+        "strides": [1, 2, 2, 2, 1, 2],
+        "use_ses": [0, 0, 0, 1, 1, 1],
+    },
+    "a6": {  # custom 6-layer (~2.4M trainable parameters)
+        "first_conv_filter": 32,
+        "expands": [1, 4, 4, 4, 4, 6],
+        "out_channels": [16, 32, 48, 96, 96, 112],
+        "depths": [1, 2, 2, 3, 5, 7],
+        "strides": [1, 2, 2, 2, 1, 2],
+        "use_ses": [0, 0, 0, 1, 1, 1],
+    },
+    "a7": {  # custom 6-layer (~2.6M trainable parameters)
+        "first_conv_filter": 32,
+        "expands": [1, 4, 4, 4, 4, 6],
+        "out_channels": [16, 32, 48, 96, 96, 112],
+        "depths": [1, 2, 2, 3, 5, 8],
+        "strides": [1, 2, 2, 2, 1, 2],
+        "use_ses": [0, 0, 0, 1, 1, 1],
+    },
+    "a8": {  # custom 6-layer (~2.7M trainable parameters)
+        "first_conv_filter": 32,
+        "expands": [1, 4, 4, 4, 4, 6],
+        "out_channels": [16, 32, 48, 96, 112, 128],
+        "depths": [1, 2, 2, 3, 5, 5],
+        "strides": [1, 2, 2, 2, 1, 2],
+        "use_ses": [0, 0, 0, 1, 1, 1],
+    },
+    "a9": {  # custom 6-layer (~3.0M trainable parameters)
+        "first_conv_filter": 32,
+        "expands": [1, 4, 4, 4, 4, 6],
+        "out_channels": [16, 32, 48, 96, 112, 128],
+        "depths": [1, 2, 2, 3, 5, 7],
         "strides": [1, 2, 2, 2, 1, 2],
         "use_ses": [0, 0, 0, 1, 1, 1],
     },
