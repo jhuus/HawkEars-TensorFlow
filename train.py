@@ -24,11 +24,11 @@ from core import audio
 from core import constants
 from core import data_generator
 from core import database
+from core import plot
 from core import util
 
 from model import model_checkpoint
 from model import efficientnet_v2
-from model import resnest
 
 class Trainer:
     def __init__(self, parameters):
@@ -68,8 +68,7 @@ class Trainer:
             
             if self.parameters.type == 0:
                 model = keras.models.load_model(constants.CKPT_PATH)
-            elif self.parameters.type == 1:
-                print('creating EfficientNetV2 model')
+            else:
                 model = efficientnet_v2.EfficientNetV2(
                         model_type=self.parameters.eff_config,
                         num_classes=len(self.classes), 
@@ -77,14 +76,6 @@ class Trainer:
                         activation='swish',
                         dropout=0.15,
                         drop_connect_rate=0.25)
-            elif self.parameters.type == 2:
-                print('creating ResNeST model')
-                model_builder = resnest.ResNest(num_classes=len(self.classes), 
-                        input_shape=(self.spec_height, constants.SPEC_WIDTH, 1),
-                        num_stages=self.parameters.num_stages,
-                        blocks_set=self.parameters.blocks_per_stage[:self.parameters.num_stages],
-                        seed=self.parameters.seed)
-                model = model_builder.build_model()
                         
             opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
             loss = keras.losses.CategoricalCrossentropy(label_smoothing = 0.13)
@@ -105,7 +96,8 @@ class Trainer:
         # initialize callbacks
         lr_scheduler = keras.callbacks.LearningRateScheduler(cos_lr_schedule) 
         model_checkpoint_callback = model_checkpoint.ModelCheckpoint(
-            constants.CKPT_PATH, self.parameters.ckpt_min_epochs, self.parameters.ckpt_min_val_accuracy, self.parameters.copy_ckpt)
+            constants.CKPT_PATH, self.parameters.ckpt_min_epochs, self.parameters.ckpt_min_val_accuracy, 
+            copy_ckpt=self.parameters.copy_ckpt, save_best_only=self.parameters.save_best_only)
         callbacks = [lr_scheduler, model_checkpoint_callback] 
           
         # create the training and test datasets
@@ -140,8 +132,8 @@ class Trainer:
         # output loss/accuracy graphs and a summary report
         scores = model.evaluate(self.x_test, self.y_test) 
 
-        self.plot_results(dir, history, 'accuracy')
-        self.plot_results(dir, history, 'loss')
+        self.plot_results(dir, history, 'accuracy', 'val_accuracy')
+        self.plot_results(dir, history, 'loss', 'val_loss')
         
         training_accuracy = history.history["accuracy"][-1]
         test_accuracy = scores[1]
@@ -224,7 +216,7 @@ class Trainer:
                         suffix = i
                     
                     spec = self.x_test[i].reshape(self.x_test[i].shape[0], self.x_test[i].shape[1])
-                    util.plot_spec(spec, f'{misident_dir}/{actual_name}_{predicted_name}_{suffix}.png')
+                    plot.plot_spec(spec, f'{misident_dir}/{actual_name}_{predicted_name}_{suffix}.png')
                 
         # output stats.csv containing data per class
         stats = 'class,count,TP,FP,FN,FP+FN,precision,recall,average\n'
@@ -306,9 +298,6 @@ class Trainer:
         self.test_indices = []
         for i in range(len(self.classes)):
             total = self.db.get_num_spectrograms(self.classes[i])
-            if self.parameters.max_specs > 0 and self.parameters.max_specs < total:
-                total = self.parameters.max_specs
-            
             num_spectrograms.append(total)
             self.test_indices.append(self.get_test_indices(total))
 
@@ -359,9 +348,6 @@ class Trainer:
                 specs = self.db.get_spectrograms_by_recording_id(recording_id)
                
                 for j in range(len(specs)):
-                    if self.parameters.max_specs > 0 and spec_index == self.parameters.max_specs:
-                        break
-                
                     spec, offset = specs[j]
                     if spec_index in self.test_indices[i].keys():
                         # test spectrograms are expanded here
@@ -404,20 +390,16 @@ if __name__ == '__main__':
 
     # command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-a', type=int, default=0, help='Maximum spectrograms per class but 0 = no limit. Default = 0.')
     parser.add_argument('-b', type=int, default=32, help='Batch size. Default = 32.')
-    parser.add_argument('-c', type=int, default=10, help='Minimum epochs before saving checkpoint. Default = 10.')
-    parser.add_argument('-d', type=float, default=0.95, help='Minimum validation accuracy before saving checkpoint. Default = 0.95.')
+    parser.add_argument('-c', type=int, default=15, help='Minimum epochs before saving checkpoint. Default = 15.')
+    parser.add_argument('-d', type=float, default=0.0, help='Minimum validation accuracy before saving checkpoint. Default = 0.')
     parser.add_argument('-e', type=int, default=10, help='Number of epochs. Default = 10.')
     parser.add_argument('-f', type=str, default='training', help='Name of training database. Default = training.')
-    parser.add_argument('-m', type=int, default=1, help='Model type (0 = Load existing model, 1 = EfficientNetV2, 2 = ResNeST. Default = 1.')
-    parser.add_argument('-m2', type=str, default='a0', help='For EfficientNetV2, name of configuration to use. Default = "a0". ')
-    parser.add_argument('-n1', type=int, default=1, help='For ResNeST, number of blocks in first stage. Default = 1.')
-    parser.add_argument('-n2', type=int, default=1, help='For ResNeST, number of blocks in second stage. Default = 1.')
-    parser.add_argument('-n3', type=int, default=1, help='For ResNeST, number of blocks in third stage. Default = 1.')
-    parser.add_argument('-n4', type=int, default=1, help='For ResNeST, number of blocks in fourth stage. Default = 1.')
+    parser.add_argument('-g', type=int, default=1, help='If 1, make a separate copy of each saved checkpoint. Default = 1.')
+    parser.add_argument('-j', type=int, default=0, help='If 1, save checkpoint only when val accuracy improves. Default = 0.')
+    parser.add_argument('-m', type=int, default=1, help='Model type (0 = Load existing model, 1 = EfficientNetV2. Default = 1.')
+    parser.add_argument('-m2', type=str, default='a0', help='Name of EfficientNetV2 configuration to use. Default = "a0". ')
     parser.add_argument('-r', type=float, default=.006, help='Base learning rate. Default = .006')
-    parser.add_argument('-s', type=int, default=1, choices=[1, 2, 3, 4], help='For ResNeST, number of stages (a stage is a group of layers that use the same feature map size). Default = 1, max = 4.')
     parser.add_argument('-t', type=float, default=.01, help='Test portion. Default = .01')
     parser.add_argument('-v', type=int, default=1, help='Verbosity (0-2, 0 omits output graphs, 2 plots misidentified test spectrograms, 3 adds graph of model). Default = 1.')
     parser.add_argument('-x', type=str, default='', help='Name(s) of extra validation databases. "abc" means load "abc.db". "abc,def" means load both databases for validation. Default = "". ')
@@ -426,23 +408,22 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    Parameters = namedtuple('Parameters', ['max_specs', 'batch_size', 'ckpt_min_epochs', 'ckpt_min_val_accuracy', 'epochs', 'val_db', 'type', 'eff_config', 
-                            'blocks_per_stage', 'base_lr', 'num_stages', 'test_portion', 'verbosity', 'binary_classifier', 'training', 'copy_ckpt', 'seed'])
-    parameters = Parameters(max_specs = args.a, batch_size = args.b, ckpt_min_epochs=args.c, ckpt_min_val_accuracy=args.d, epochs = args.e, training=args.f, 
-                            type = args.m, eff_config = args.m2, blocks_per_stage = [args.n1, args.n2, args.n3, args.n4],  base_lr=args.r, num_stages = args.s,
-                            test_portion = args.t, verbosity = args.v, binary_classifier=(args.y==1), val_db = args.x, seed=args.z, copy_ckpt=False)
+    Parameters = namedtuple('Parameters', ['batch_size', 'ckpt_min_epochs', 'ckpt_min_val_accuracy', 'epochs', 'val_db', 'type', 'eff_config', 
+                            'base_lr', 'test_portion', 'verbosity', 'binary_classifier', 'training', 'copy_ckpt', 'save_best_only', 'seed'])
+    parameters = Parameters(batch_size = args.b, ckpt_min_epochs=args.c, ckpt_min_val_accuracy=args.d, epochs = args.e, training=args.f, type = args.m, 
+                            eff_config = args.m2, base_lr=args.r, test_portion = args.t, verbosity = args.v, binary_classifier=(args.y==1), val_db = args.x, 
+                            seed=args.z, copy_ckpt=(args.g == 1), save_best_only=(args.j == 1))
                             
     if args.z != None:
         # these settings make results more reproducible, which is very useful when tuning parameters
         os.environ['PYTHONHASHSEED'] = str(args.z)
-        os.environ['TF_DETERMINISTIC_OPS'] = '1'
+        #os.environ['TF_DETERMINISTIC_OPS'] = '1'
         os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
         random.seed(args.z)
         np.random.seed(args.z)
         tf.random.set_seed(args.z)
         tf.config.threading.set_inter_op_parallelism_threads(1)
         tf.config.threading.set_intra_op_parallelism_threads(1)
-
 
     trainer = Trainer(parameters)
     trainer.run()
