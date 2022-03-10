@@ -37,6 +37,7 @@ num_specs = {}
 count = 0
 sum = 0
 for class_name in class_names:
+    print(f'processing {class_name}')
     num_specs[class_name] = db.get_num_spectrograms(class_name)
     if num_specs[class_name] != None and num_specs[class_name] > 0:
         result = db.get_subcategory_details_by_name(class_name)
@@ -49,6 +50,9 @@ for class_name in class_names:
         
         sum += num_specs[class_name]
         count += 1
+    else:
+        print(f'fatal error: no spectrograms found for {class_name}')
+        quit()
     
 # dividing each count into the average keeps the average weight at 1,
 # which ensures that weighting doesn't change the overall learning rate
