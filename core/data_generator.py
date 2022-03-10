@@ -12,7 +12,9 @@ from skimage import filters
 from core import audio
 from core import constants
 from core import util
+from core import plot
 
+PROB_MERGE = 0.2   # probability of merging to train multi-label support
 PROB_AUG = 0.55    # probability of augmentation
 CACHE_LEN = 1000   # cache this many noise specs for performance
 
@@ -31,12 +33,13 @@ SPECKLE_INDEX = 5
 FREQS = [0.25, 0.5, 0.2, 1.0, 0.5, 0.9]
 
 class DataGenerator():
-    def __init__(self, x_train, y_train, seed=None, augmentation=True, binary_classifier=False):
+    def __init__(self, x_train, y_train, seed=None, augmentation=True, binary_classifier=False, multilabel=False):
         self.x_train = x_train
         self.y_train = y_train
         self.seed = seed
         self.augmentation = augmentation
         self.binary_classifier = binary_classifier
+        self.multilabel = multilabel
         
         if binary_classifier:
             self.spec_height = constants.BINARY_SPEC_HEIGHT
@@ -80,7 +83,21 @@ class DataGenerator():
         np.random.shuffle(self.indices)
         for i, id in enumerate(self.indices):
             spec = util.expand_spectrogram(self.x_train[id], binary_classifier=self.binary_classifier)
+            label = self.y_train[id].astype(np.float32)
             
+            if self.multilabel and not self.binary_classifier:
+                prob = np.random.uniform(0, 1)
+
+                if prob < PROB_MERGE:
+                    index = random.randint(0, len(self.indices) - 1)
+                    other_id = self.indices[index]
+                    if id != other_id and not np.array_equal(self.y_train[id], self.y_train[other_id]):
+                        # merge two specs from different classes to train multi-label support
+                        other_spec = util.expand_spectrogram(self.x_train[other_id])
+                        spec += other_spec
+                        spec = spec.clip(0, 1)
+                        label += self.y_train[other_id].astype(np.float32)
+
             if self.augmentation:
                 prob = np.random.uniform(0, 1)
                 if prob < PROB_AUG:
@@ -99,8 +116,8 @@ class DataGenerator():
                         spec = self._shift_horizontal(spec)
                     else:
                         spec = self._speckle(spec)
-            
-            yield (spec.astype(np.float32), self.y_train[id].astype(np.float32))
+
+            yield (spec.astype(np.float32), label)
     
     # add low frequency noise to the spectrogram
     def _add_low_noise(self, spec):
