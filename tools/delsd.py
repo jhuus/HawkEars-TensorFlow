@@ -30,7 +30,7 @@ species_name = args.s
 recording_dict = {}
 results = db.get_recordings_by_subcategory_name(species_name)
 for result in results:
-    recording_id, file_name = result
+    recording_id, file_name, _ = result
     recording_dict[file_name[:-4]] = recording_id
 
 spec_names = util.get_file_lines('discards.txt')
