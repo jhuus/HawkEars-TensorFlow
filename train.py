@@ -69,16 +69,27 @@ class Trainer:
             if self.parameters.type == 0:
                 model = keras.models.load_model(constants.CKPT_PATH)
             else:
+                if self.parameters.multilabel:
+                    class_act = 'sigmoid'
+                else:
+                    class_act = 'softmax'
+
                 model = efficientnet_v2.EfficientNetV2(
                         model_type=self.parameters.eff_config,
                         num_classes=len(self.classes), 
                         input_shape=(self.spec_height, constants.SPEC_WIDTH, 1),
                         activation='swish',
+                        classifier_activation=class_act,
                         dropout=0.15,
                         drop_connect_rate=0.25)
                         
             opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
-            loss = keras.losses.CategoricalCrossentropy(label_smoothing = 0.13)
+
+            if self.parameters.multilabel:
+                loss = keras.losses.BinaryCrossentropy(label_smoothing = 0.13)
+            else:
+                loss = keras.losses.CategoricalCrossentropy(label_smoothing = 0.13)
+
             model.compile(loss = loss, optimizer = opt, metrics = 'accuracy') 
 
         # create output directory
@@ -104,7 +115,8 @@ class Trainer:
         options = tf.data.Options()
         options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
         
-        datagen = data_generator.DataGenerator(self.x_train, self.y_train, seed=self.parameters.seed, binary_classifier=self.parameters.binary_classifier)
+        datagen = data_generator.DataGenerator(self.x_train, self.y_train, seed=self.parameters.seed, 
+                                               binary_classifier=self.parameters.binary_classifier, multilabel=self.parameters.multilabel)
         train_ds = tf.data.Dataset.from_generator(
             datagen, 
             output_types=(tf.float16, tf.float16), 
@@ -130,15 +142,17 @@ class Trainer:
         elapsed = time.time() - start_time
           
         # output loss/accuracy graphs and a summary report
-        scores = model.evaluate(self.x_test, self.y_test) 
-
-        self.plot_results(dir, history, 'accuracy', 'val_accuracy')
-        self.plot_results(dir, history, 'loss', 'val_loss')
-        
         training_accuracy = history.history["accuracy"][-1]
-        test_accuracy = scores[1]
+        if len(self.x_test) > 0:
+            self.plot_results(dir, history, 'accuracy', 'val_accuracy')
+            self.plot_results(dir, history, 'loss', 'val_loss')
+            scores = model.evaluate(self.x_test, self.y_test) 
+            test_accuracy = scores[1]
+        else:
+            self.plot_results(dir, history, 'accuracy')
+            self.plot_results(dir, history, 'loss')
         
-        if self.parameters.verbosity >= 2:
+        if self.parameters.verbosity >= 2 and len(self.x_test) > 0:
             # report on misidentified test spectrograms
             predictions = model.predict(self.x_test)
             self.analyze_predictions(predictions)
@@ -150,9 +164,11 @@ class Trainer:
                 text_output.write(f'Epochs: {self.parameters.epochs}\n')
                 text_output.write(f'Training loss: {history.history["loss"][-1]:.3f}\n')
                 text_output.write(f'Training accuracy: {training_accuracy:.3f}\n')
-                text_output.write(f'Test loss: {scores[0]:.3f}\n')
-                text_output.write(f'Final test accuracy: {test_accuracy:.3f}\n')
-                text_output.write(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
+
+                if len(self.x_test) > 0:
+                    text_output.write(f'Test loss: {scores[0]:.3f}\n')
+                    text_output.write(f'Final test accuracy: {test_accuracy:.3f}\n')
+                    text_output.write(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
                 
                 minutes = int(elapsed) // 60
                 seconds = int(elapsed) % 60
@@ -344,7 +360,7 @@ class Trainer:
             results = self.db.get_recordings_by_subcategory_name(self.classes[i])
             spec_index = 0
             for result in results:
-                recording_id, file_name = result
+                recording_id, file_name, _ = result
                 specs = self.db.get_spectrograms_by_recording_id(recording_id)
                
                 for j in range(len(specs)):
@@ -401,6 +417,7 @@ if __name__ == '__main__':
     parser.add_argument('-m2', type=str, default='a0', help='Name of EfficientNetV2 configuration to use. Default = "a0". ')
     parser.add_argument('-r', type=float, default=.006, help='Base learning rate. Default = .006')
     parser.add_argument('-t', type=float, default=.01, help='Test portion. Default = .01')
+    parser.add_argument('-u', type=int, default=0, help='1 = Train a multi-label classifier. Default = 0.')
     parser.add_argument('-v', type=int, default=1, help='Verbosity (0-2, 0 omits output graphs, 2 plots misidentified test spectrograms, 3 adds graph of model). Default = 1.')
     parser.add_argument('-x', type=str, default='', help='Name(s) of extra validation databases. "abc" means load "abc.db". "abc,def" means load both databases for validation. Default = "". ')
     parser.add_argument('-y', type=int, default=0, help='If y = 1, extract spectrograms for binary classifier. Default = 0.')
@@ -408,11 +425,12 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    Parameters = namedtuple('Parameters', ['batch_size', 'ckpt_min_epochs', 'ckpt_min_val_accuracy', 'epochs', 'val_db', 'type', 'eff_config', 
-                            'base_lr', 'test_portion', 'verbosity', 'binary_classifier', 'training', 'copy_ckpt', 'save_best_only', 'seed'])
-    parameters = Parameters(batch_size = args.b, ckpt_min_epochs=args.c, ckpt_min_val_accuracy=args.d, epochs = args.e, training=args.f, type = args.m, 
-                            eff_config = args.m2, base_lr=args.r, test_portion = args.t, verbosity = args.v, binary_classifier=(args.y==1), val_db = args.x, 
-                            seed=args.z, copy_ckpt=(args.g == 1), save_best_only=(args.j == 1))
+    Parameters = namedtuple('Parameters', ['base_lr', 'batch_size', 'binary_classifier', 'ckpt_min_epochs', 'ckpt_min_val_accuracy', 
+                            'copy_ckpt', 'eff_config', 'epochs', 'multilabel', 'save_best_only', 'seed', 'test_portion', 'training', 'type',
+                            'val_db', 'verbosity'])
+    parameters = Parameters(base_lr=args.r, batch_size = args.b, binary_classifier=(args.y==1), ckpt_min_epochs=args.c, ckpt_min_val_accuracy=args.d, 
+                            copy_ckpt=(args.g == 1), eff_config = args.m2, epochs = args.e, multilabel=(args.u==1), save_best_only=(args.j == 1), seed=args.z,
+                            test_portion = args.t, training=args.f, type = args.m, val_db = args.x, verbosity = args.v)
                             
     if args.z != None:
         # these settings make results more reproducible, which is very useful when tuning parameters
@@ -425,5 +443,6 @@ if __name__ == '__main__':
         tf.config.threading.set_inter_op_parallelism_threads(1)
         tf.config.threading.set_intra_op_parallelism_threads(1)
 
+    keras.mixed_precision.set_global_policy("mixed_float16") # trains 25-30% faster
     trainer = Trainer(parameters)
     trainer.run()
