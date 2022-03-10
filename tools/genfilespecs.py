@@ -31,11 +31,19 @@ out_dir = os.path.join(root_dir, 'filespecs')
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 
-audio = audio.Audio(path_prefix='../')
-for filename in os.listdir(root_dir):
-    filepath = os.path.join(root_dir, filename)
-    if util.is_audio_file(filepath):
-        signal, rate = audio.load(filepath)
+audio_obj = None
+for file_name in os.listdir(root_dir):
+    file_path = os.path.join(root_dir, file_name)
+    if util.is_audio_file(file_path):
+        image_path = os.path.join(out_dir, f'{file_name}.png')
+        if os.path.exists(image_path):
+            continue
+
+        if audio_obj is None:
+            audio_obj = audio.Audio(path_prefix='../')        
+    
+        print(f'processing {file_path}')
+        signal, rate = audio_obj.load(file_path)
         if signal is None:
             continue
         
@@ -44,6 +52,6 @@ for filename in os.listdir(root_dir):
         if width < constants.SPEC_WIDTH:
             continue
         
-        specs = audio.get_spectrograms([0], seconds=spec_len, shape=(constants.SPEC_HEIGHT, width), check_noise=False, exponent=0.4, row_factor=0)
-        util.plot_spec(specs[0], os.path.join(out_dir, f'{filename}.png'))
+        specs = audio_obj.get_spectrograms([0], seconds=spec_len, shape=(constants.SPEC_HEIGHT, width), check_noise=False, exponent=0.4, row_factor=0)
+        util.plot_spec(specs[0], image_path)
        
