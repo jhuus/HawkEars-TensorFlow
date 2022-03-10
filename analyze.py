@@ -19,6 +19,21 @@ from core import audio
 from core import constants
 from core import util
 
+# when checking if adjacent segment matches species, use self.min_prob minus this
+SUBTRACT_ADJACENT_PROB = 0.20
+
+class ClassInfo:
+    def __init__(self, name, code, ignore):
+        self.name = name
+        self.code = code
+        self.ignore = ignore
+        self.reset()
+
+    def reset(self):
+        self.has_label = False
+        self.probs_s = [] # from single-label model predictions (one per segment)
+        self.probs_m = [] # from multi-label model predictions (one per segment)
+
 class Label:
     def __init__(self, class_name, probability, start_time, end_time):
         self.class_name = class_name
@@ -27,14 +42,16 @@ class Label:
         self.end_time = end_time
 
 class Analyzer:
-    def __init__(self, checkpoint_path, class_file_path, input_path, output_path, min_prob, start_time, 
+    def __init__(self, class_file_path, input_path, output_path, min_prob_s, min_prob_m, start_time, 
                  end_time, use_codes, segmentation_mode, use_ignore_file):
                  
-        self.checkpoint_path = checkpoint_path
+        self.ckpt_path_s = 'data/ckpt_s' # single-label model
+        self.ckpt_path_m = 'data/ckpt_m' # multi-label model
         self.class_file_path = class_file_path
         self.input_path = input_path.strip()
         self.output_path = output_path.strip()
-        self.min_prob = min_prob
+        self.min_prob_s = min_prob_s # for single-label model
+        self.min_prob_m = min_prob_m # for multi-label model
         self.start_seconds = self._get_seconds_from_time_string(start_time)
         self.end_seconds = self._get_seconds_from_time_string(end_time)
         self.use_codes = (use_codes == 1)
@@ -53,62 +70,27 @@ class Analyzer:
         elif not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
         
-        self.classes = util.get_class_list(class_file_path=self.class_file_path)
-        self.class_dict = util.get_class_dict(class_file_path=self.class_file_path)
-        self.ignore = util.get_file_lines(constants.IGNORE_FILE)
+        self.class_infos = self._get_class_infos()
         self.audio = audio.Audio()
-        
-    def _get_seconds_from_time_string(self, time_str):
-        time_str = time_str.strip()
-        if len(time_str) == 0:
-            return None
 
-        seconds = 0
-        tokens = time_str.split(':')
-        if len(tokens) > 2:
-            seconds += 3600 * int(tokens[-3])
+    def _get_class_infos(self):
+        classes = util.get_class_list(class_file_path=self.class_file_path)
+        class_dict = util.get_class_dict(class_file_path=self.class_file_path)
+        ignore_list = util.get_file_lines(constants.IGNORE_FILE)
 
-        if len(tokens) > 1:
-            seconds += 60 * int(tokens[-2])
+        class_infos = []
+        for klass in classes: # use "klass" since "class" is a keyword
+            if self.use_ignore_file and klass in ignore_list:
+                ignore = True
+            else:
+                ignore = False
 
-        seconds += int(tokens[-1])
-        return seconds
-        
-    # given the predictions for a class, return the predicted class, ignoring classes in the ignore file
-    def _get_predicted_class(self, i, predictions):
-        predicted_class = np.argmax(predictions[i])
-        class_name = self.classes[predicted_class]
-        if self.use_ignore_file and class_name in self.ignore:
-            return None, None
+            class_infos.append(ClassInfo(klass, class_dict[klass], ignore))
 
-        if self.segmentation_mode == 0 and i not in [0, len(predictions) - 1]:
-            check_left_class = np.argmax(predictions[i - 1])
-            check_right_class = np.argmax(predictions[i + 1])
-            if predicted_class != check_left_class and predicted_class != check_right_class:
-                # doesn't match either adjacent (and overlapping) spectrogram, so probably spurious
-                return None, None
-            
-        if self.use_codes:
-            return predicted_class, self.class_dict[class_name]
-        else:
-            return predicted_class, class_name
-        
-    # get a list of spectrograms for the given offsets
-    def _get_specs(self, offsets):
-        spec_list = self.audio.get_spectrograms(offsets)
-        spec_array = np.zeros((len(offsets), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
-        for i in range(len(offsets)):
-            spec = spec_list[i].reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
-            spec_array[i] = spec.astype(np.float32)
-            
-        return spec_array
+        return class_infos
 
-    def _analyze_file(self, file_path):
-        print(f'Analyzing {file_path}')
-        signal, rate = self.audio.load(file_path)
-        if not self.audio.have_signal:
-            return
-            
+    # return predictions for both the single and multi-label models
+    def _get_predictions(self, signal, rate):  
         # if needed, pad the signal with zeros to get the last spectrogram
         total_seconds = len(signal) / rate
         last_segment_len = total_seconds - constants.SEGMENT_LEN * (total_seconds // constants.SEGMENT_LEN)
@@ -133,34 +115,103 @@ class Analyzer:
             offsets = np.arange(start_seconds, end_seconds, 3.0).tolist()
         
         specs = self._get_specs(offsets)
-        predictions = self.model.predict(specs)
+        predictions_s = self.model_s.predict(specs)
+        predictions_m = self.model_m.predict(specs)
+        return predictions_s, predictions_m, offsets
 
-        labels = []
-        prev_label = None
-        for i in range(len(predictions)):
-            '''
-            # this can be handy when trying to understand a prediction
-            print('\n', offsets[i])
-            for j in range(len(predictions[i])):
-                if predictions[i][j] > .01:
-                    print(predictions[i][j], self.classes[j])
-            '''
+    def _get_seconds_from_time_string(self, time_str):
+        time_str = time_str.strip()
+        if len(time_str) == 0:
+            return None
 
-            predicted_class, class_name = self._get_predicted_class(i, predictions)
-            if predicted_class is None:
-                continue
+        seconds = 0
+        tokens = time_str.split(':')
+        if len(tokens) > 2:
+            seconds += 3600 * int(tokens[-3])
+
+        if len(tokens) > 1:
+            seconds += 60 * int(tokens[-2])
+
+        seconds += int(tokens[-1])
+        return seconds
+        
+    # get a list of spectrograms for the given offsets
+    def _get_specs(self, offsets):
+        spec_list = self.audio.get_spectrograms(offsets)
+        spec_array = np.zeros((len(offsets), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+        for i in range(len(offsets)):
+            spec = spec_list[i].reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+            spec_array[i] = spec.astype(np.float32)
             
-            probability = predictions[i][predicted_class]
-            if probability >= self.min_prob:
-                end_time = offsets[i]+constants.SEGMENT_LEN
-                if self.segmentation_mode == 0 and prev_label != None and prev_label.class_name == class_name \
-                    and prev_label.end_time >= offsets[i]:
-                    
-                    # extend the previous label's end time (i.e. merge)
-                    prev_label.end_time = end_time
-                    prev_label.probability = max(probability, prev_label.probability)
+        return spec_array
+
+    def _analyze_file(self, file_path):
+        print(f'Analyzing {file_path}')
+
+        # clear info from previous recording
+        for class_info in self.class_infos:
+            class_info.reset()
+
+        signal, rate = self.audio.load(file_path)
+        if not self.audio.have_signal:
+            return
+
+        predictions_s, predictions_m, offsets = self._get_predictions(signal, rate)
+
+        # populate class_infos with predictions
+        for i in range(len(predictions_s)):
+            for j in range(len(predictions_s[i])):
+                self.class_infos[j].probs_s.append(predictions_s[i][j])
+                self.class_infos[j].probs_m.append(predictions_m[i][j])
+                if (predictions_s[i][j] >= self.min_prob_s and predictions_m[i][j] >= self.min_prob_s) or predictions_m[i][j] >= self.min_prob_m:
+                    self.class_infos[j].has_label = True
+
+        # generate labels for one class at a time
+        labels = []
+        for class_info in self.class_infos:
+            if class_info.ignore or not class_info.has_label:
+                continue
+
+            if self.use_codes:
+                name = class_info.code
+            else:
+                name = class_info.name
+
+            prev_label = None
+            probs_s = class_info.probs_s
+            probs_m = class_info.probs_m
+            min_adj_prob_s = self.min_prob_s - SUBTRACT_ADJACENT_PROB # in mode 0, adjacent segments need this prob at least
+            min_adj_prob_m = self.min_prob_m - SUBTRACT_ADJACENT_PROB # in mode 0, adjacent segments need this prob at least
+            for i in range(len(probs_s)):
+                # create a label if both models exceed min_prob_s (p1) or multi-label model exceeds min_prob_m (p2) 
+                if probs_s[i] >= self.min_prob_s and probs_m[i] >= self.min_prob_s:
+                    use_multi = False
+                    use_prob = probs_s[i]
+                elif probs_m[i] >= self.min_prob_m:
+                    use_multi = True
+                    use_prob = probs_m[i]
                 else:
-                    label = Label(class_name, probability, offsets[i], end_time)
+                    continue
+
+                end_time = offsets[i]+constants.SEGMENT_LEN
+                if self.segmentation_mode == 0:
+                    if i not in [0, len(probs_s) - 1]:
+                        if use_multi:
+                            if probs_m[i - 1] < min_adj_prob_m and probs_m[i + 1] < min_adj_prob_m:
+                                continue
+                        elif probs_s[i - 1] < min_adj_prob_s and probs_s[i + 1] < min_adj_prob_s:
+                            continue
+
+                    if prev_label != None and prev_label.end_time >= offsets[i]:
+                        # extend the previous label's end time (i.e. merge)
+                        prev_label.end_time = end_time
+                        prev_label.probability = max(use_prob, prev_label.probability)
+                    else:
+                        label = Label(name, use_prob, offsets[i], end_time)
+                        labels.append(label)
+                        prev_label = label
+                else:
+                    label = Label(name, use_prob, offsets[i], end_time)
                     labels.append(label)
                     prev_label = label
                 
@@ -191,7 +242,10 @@ class Analyzer:
         
     def run(self):
         file_list = self._get_file_list()
-        self.model = keras.models.load_model(self.checkpoint_path, compile=False)
+
+        # load the single and multi-label models
+        self.model_s = keras.models.load_model(self.ckpt_path_s, compile=False)
+        self.model_m = keras.models.load_model(self.ckpt_path_m, compile=False)
         
         start_time = time.time()
         for file_path in file_list:
@@ -206,16 +260,16 @@ if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('-b', type=int, default=0, help='0 = Use species names in labels, 1 = Use banding codes. Default = 0')
-    parser.add_argument('-c', type=str, default=constants.CKPT_PATH, help='Checkpoint path. Default=data/ckpt')
     parser.add_argument('-d', type=str, default=constants.CLASSES_FILE, help='Class file path. Default=data/classes.txt')
     parser.add_argument('-e', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional')
     parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default')
     parser.add_argument('-m', type=int, default=0, help='Segmentation mode. 0 = every 1 second (and compare & merge neighbours), 1 = every 3 seconds. Default = 0')
     parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is current directory')
-    parser.add_argument('-p', type=float, default=0.70, help='Minimum confidence level. Default = 0.65')
+    parser.add_argument('-p1', type=float, default=0.75, help='Minimum confidence level for single-label model. Default = 0.75')
+    parser.add_argument('-p2', type=float, default=0.85, help='Minimum confidence level for multi-label model. Default = 0.85')
     parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional')
     parser.add_argument('-x', type=int, default=1, help='1 = Ignore classes listed in ignore.txt, 0 = do not. Default = 1')
     args = parser.parse_args()
         
-    analyzer = Analyzer(args.c, args.d, args.i, args.o, args.p, args.s, args.e, args.b, args.m, args.x)
+    analyzer = Analyzer(args.d, args.i, args.o, args.p1, args.p2, args.s, args.e, args.b, args.m, args.x)
     analyzer.run()
