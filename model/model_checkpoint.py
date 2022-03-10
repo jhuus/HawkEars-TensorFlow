@@ -17,7 +17,11 @@ class ModelCheckpoint(keras.callbacks.Callback):
         self.save_best_only = save_best_only
 
     def on_epoch_end(self, epoch, logs=None):
-        val_accuracy = logs['val_accuracy']
+        if 'val_accuracy' in logs.keys():
+            val_accuracy = logs['val_accuracy']
+        else:
+            val_accuracy = 0
+
         self.best_val_accuracy = max(val_accuracy, self.best_val_accuracy)
         
         if epoch >= self.min_epochs - 1 and val_accuracy >= self.min_val_accuracy \
