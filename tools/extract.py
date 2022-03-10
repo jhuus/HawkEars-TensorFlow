@@ -23,9 +23,11 @@
 
 import argparse
 import inspect
+import math
 import os
 import random
 import sys
+import time
 import zlib
 from pathlib import Path
 
@@ -40,6 +42,7 @@ sys.path.insert(0, parentdir)
 from core import audio
 from core import constants
 from core import database
+from core import plot
 from core import util
 
 class Spectrogram:
@@ -50,7 +53,7 @@ class Spectrogram:
         self.offset = offset
 
 class Main:
-    def __init__(self, mode, label_type, root, source, category, subcategory, code, dbname, sound_factor, binary_classifier, keep_empty, sparse_noise):
+    def __init__(self, mode, label_type, root, source, category, subcategory, code, dbname, sound_factor, binary_classifier, keep_empty, sparse_noise, label_incr, spec_type):
         self.mode = mode
         self.db = database.Database(filename=f'../data/{dbname}.db')
         self.audio = audio.Audio(path_prefix='../')
@@ -65,6 +68,8 @@ class Main:
         self.binary_classifier = (binary_classifier == 1)
         self.keep_empty = (keep_empty == 1)
         self.sparse_noise = (sparse_noise == 1)
+        self.label_incr = label_incr
+        self.spec_type = spec_type
         
     def _fatal_error(self, message):
         print(message)
@@ -105,7 +110,9 @@ class Main:
                 starts = self.audio.find_sounds(sound_factor=self.sound_factor, keep_empty=self.keep_empty)
             else:
                 seconds = int(len(signal) / rate)
-                starts = [i for i in range(0, seconds, 3)]
+                starts = []
+                for i in range(0, math.floor(seconds / self.label_incr)):
+                    starts.append(i * self.label_incr)
             
             basename = os.path.basename(file_path)
             prefix = basename.split('.')[-2]
@@ -154,7 +161,7 @@ class Main:
 
         raw_specs = self.audio.get_spectrograms(offsets, binary_classifier=self.binary_classifier)
         for i in range(len(offsets)):
-            specs.append(Spectrogram(raw_specs[i], f'{prefix}-{offsets[i]}', recording_id, offsets[i]))
+            specs.append(Spectrogram(raw_specs[i], f'{prefix}-{offsets[i]:.2f}', recording_id, offsets[i]))
             
         return specs, raw_specs
         
@@ -168,6 +175,9 @@ class Main:
             filename = os.path.basename(audio_file)
             print(f'processing {filename}')
             offsets = self._get_offsets(filename)
+            if len(offsets) == 0:
+                continue
+                
             curr_specs, curr_raw_specs = self._get_spectrograms(audio_file, offsets)
             specs.extend(curr_specs)
             raw_specs.extend(curr_raw_specs)
@@ -181,7 +191,7 @@ class Main:
             if not spec.spec is None:
                 # convert to bytes, zip it and insert in database
                 compressed = util.compress_spectrogram(spec.spec)
-                self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset)
+                self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset, self.spec_type)
         
     def _plot_spectrograms(self):
         print(f'plot spectrograms')
@@ -205,7 +215,7 @@ class Main:
                 specs[i].spec = raw_specs[i]
         
         for spec in specs:
-            util.plot_spec(spec.spec, os.path.join(self.spec_path, f'{spec.name}.png'), binary_classifier=self.binary_classifier)
+            plot.plot_spec(spec.spec, os.path.join(self.spec_path, f'{spec.name}.png'), binary_classifier=self.binary_classifier)
         
     # In this case (m=3) the root folder contains audio files for multiple species, where each file name
     # has the species code as a prefix (e.g. BAWW_XC213571.mp3).
@@ -236,7 +246,7 @@ class Main:
                 if not spec.spec is None:
                     # convert to bytes, zip it and insert in database
                     compressed = util.compress_spectrogram(spec.spec)
-                    self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset)
+                    self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset, self.spec_type)
                 
     # when label files identify the species (mode 4), import all species for one label file
     def _import_labelled_species(self, file_path, label_filepath, audio_files):
@@ -262,7 +272,7 @@ class Main:
                             result = self.db.get_spectrogram(spec.recording_id, spec.offset)
                             if result is None:
                                 compressed = util.compress_spectrogram(spec.spec)
-                                self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset)
+                                self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset, self.spec_type)
 
     def _init_database(self):
         self.source_id = self.db.get_source_by_name(self.source)
@@ -377,18 +387,24 @@ if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', type=int, default=2, help='Mode. 0 = generate labels, 1 = plot spectrograms, 2 = import spectrograms (see comments at top of script). Default = 2.')
-    parser.add_argument('-t', type=int, default=0, help='Label type for mode = 0. type 0 means generate labels at sounds, type 1 means generate a label every 3 seconds.')
+    parser.add_argument('-t', type=int, default=0, help='Label type for mode = 0. type 0 means generate labels at sounds, 1 means every args.z seconds.')
     parser.add_argument('-d', type=str, default='', help='Directory containing the audio files.')
     parser.add_argument('-a', type=str, default='Xeno-Canto', help='Source (e.g. "Xeno-Canto").')
     parser.add_argument('-b', type=str, default='bird', help='Category (e.g. bird).')
     parser.add_argument('-s', type=str, default='', help='Subcategory (e.g. "Baltimore Oriole").')
+    parser.add_argument('-r', type=str, default='', help='Spectrogram type, e.g. chip or tink.')
     parser.add_argument('-c', type=str, default='', help='Code (e.g. BAOR).')
     parser.add_argument('-f', type=str, default='training', help='Database name. Default = training')
     parser.add_argument('-g', type=float, default=2.5, help='Factor for call to find_sounds when t = 0. Default = 2.5')
     parser.add_argument('-e', type=int, default=0, help='If e = 1, generate labels even if empty (no apparent sound). Default = 0.')
     parser.add_argument('-n', type=int, default=0, help='If n = 1, convert spectrograms to sparse noise. Default = 0.')
     parser.add_argument('-x', type=int, default=0, help='If x = 1, extract spectrograms for binary classifier. Default = 0.')
+    parser.add_argument('-z', type=float, default=3.0, help='If t = 1, generate a label every this many seconds. Default = 3.0.')
     
     args = parser.parse_args()
+    start_time = time.time()
 
-    Main(args.m, args.t, args.d, args.a, args.b, args.s, args.c, args.f, args.g, args.x, args.e, args.n).run()
+    Main(args.m, args.t, args.d, args.a, args.b, args.s, args.c, args.f, args.g, args.x, args.e, args.n, args.z, args.r).run()
+
+    elapsed = time.time() - start_time
+    print(f'elapsed seconds = {elapsed:.3f}')    
