@@ -52,7 +52,7 @@ for db_name in db_names:
     db = database.Database(f'../data/{db_name}.db')
     results = db.get_recordings_by_subcategory_name(species_name)
     for result in results:
-        _, file_name = result
+        _, file_name, _ = result
         base_name, ext = os.path.splitext(file_name)
         db_dict[base_name] = 1
 
