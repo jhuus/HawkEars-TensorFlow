@@ -151,6 +151,17 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database delete_spectrogram_by_id: {e}')
         
+    def delete_spectrogram_by_recording_id(self, recording_id):
+        try:
+            query = f'''
+                DELETE FROM Spectrogram WHERE RecordingID = {recording_id}
+            '''
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f'Error in database delete_spectrogram_by_recording_id: {e}')
+        
     def delete_subcategory(self, subcategory_name):
         try:
             query = f'''
@@ -292,7 +303,7 @@ class Database:
     def get_recordings_by_subcategory_name(self, subcategory_name):
         try:
             query = f'''
-                SELECT ID, FileName 
+                SELECT ID, FileName, Seconds 
                 FROM Recording
                 WHERE SubcategoryID = (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}")
                 ORDER BY ID
