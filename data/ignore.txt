@@ -4,4 +4,5 @@ Cicada
 Eastern Gray Squirrel
 Noise
 Red Squirrel
+Rooster
 Spring Peeper
