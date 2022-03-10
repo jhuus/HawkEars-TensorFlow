@@ -24,7 +24,7 @@ from core import database
 from core import util
 
 # thread function to extract all the spectrograms for the given recording
-def extract_spectrograms(recording, audio_object):
+def extract_spectrograms(recording, audio_object, binary_classifier):
     recording.specs = []
     if len(recording.offsets) > 0:
         signal, rate = audio_object.load(recording.file_path)
@@ -34,7 +34,7 @@ def extract_spectrograms(recording, audio_object):
         for result in recording.offsets:
             offsets.append(result[0])
             
-        specs = audio_object.get_spectrograms(offsets)
+        specs = audio_object.get_spectrograms(offsets, binary_classifier=binary_classifier)
         for i in range(len(offsets)):
             if not specs[i] is None:
                 recording.specs.append(Spectrogram(recording, offsets[i], specs[i]))
@@ -52,7 +52,7 @@ class Spectrogram:
         self.data = data
 
 class Main:
-    def __init__(self, mode, root, subcategory, prefix, source_db, target_db, num_threads):
+    def __init__(self, mode, root, subcategory, prefix, source_db, target_db, num_threads, binary_classifier):
         self.mode = mode
         self.root = root
         self.subcategory = subcategory
@@ -60,6 +60,10 @@ class Main:
         self.source_db = database.Database(f'../data/{source_db}.db')
         self.target_db = database.Database(f'../data/{target_db}.db')
         self.num_threads = num_threads
+        self.binary_classifier = (binary_classifier == 1)
+
+        if self.binary_classifier:
+            self.root = os.path.join(self.root, 'binary')
         
     def fatal_error(self, message):
         print(message)
@@ -82,7 +86,7 @@ class Main:
         self.recordings = []
         results = self.source_db.get_recordings_by_subcategory_name(self.subcategory)
         for result in results:
-            recording_id, file_name = result
+            recording_id, file_name, _ = result
             file_name_lower = file_name.lower()
             if len(self.prefix) > 0 and not file_name_lower.startswith(self.prefix):
                 continue
@@ -158,7 +162,7 @@ class Main:
                     print(f'Processing {recording.file_name}')
                     recording.offsets = self.source_db.get_spectrogram_offsets_by_recording_id(recording.source_id)
                     
-                    thread = threading.Thread(target=extract_spectrograms, args=(recording, audio_objects[thread_num]))
+                    thread = threading.Thread(target=extract_spectrograms, args=(recording, audio_objects[thread_num], self.binary_classifier))
                     thread.start()
                     threads.append(thread)
                     rec_num += 1
@@ -209,15 +213,16 @@ class Main:
 if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
+    parser.add_argument('-b', type=int, default=0, help='1 = spectrograms for binary classifier. Default = 0.')
+    parser.add_argument('-d1', type=str, default='training', help='Source database name. Default = training')
+    parser.add_argument('-d2', type=str, default='training2', help='Target database name. Default = training2')
     parser.add_argument('-m', type=int, default=0, help='Mode where 0 means just check file availability and 1 means also extract spectrograms. Default = 0.')
-    parser.add_argument('-r', type=str, default='/data', help='Root directory containing bird/BLJA etc. Default is /data')
+    parser.add_argument('-r', type=str, default='/home/jhuus/data', help='Root directory containing bird/BLJA etc. Default is /home/jhuus/data')
     parser.add_argument('-s', type=str, default='', help='Species or subcategory name.')
     parser.add_argument('-p', type=str, default='', help='Only extract from file names having this prefix (case-insensitive). Default is empty, which means extract all.')
-    parser.add_argument('-t', type=int, default=2, help='Number of threads. Default = 2.')
-    parser.add_argument('-b1', type=str, default='training', help='Source database name. Default = training')
-    parser.add_argument('-b2', type=str, default='training2', help='Target database name. Default = training2')
+    parser.add_argument('-t', type=int, default=1, help='Number of threads. Default = 1.')
     
     args = parser.parse_args()
 
-    Main(args.m, args.r, args.s, args.p, args.b1, args.b2, args.t).run()
+    Main(args.m, args.r, args.s, args.p, args.d1, args.d2, args.t, args.b).run()
     
