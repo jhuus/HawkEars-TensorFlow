@@ -72,13 +72,13 @@ You can click a label to view or listen to that segment. You can also edit a lab
 ## Limitations
 Some bird species are difficult to identify by sound alone. This includes mimics, for obvious reasons, which is why Northern Mockingbird is not currently included in the species list. European Starlings are included, but often mimic other birds and are therefore sometimes challenging to identify. Species that have been excluded because they sound too much like other species are Boreal Chickadee (sounds like Black-capped Chickadee), Hoary Redpoll (sounds like Common Redpoll) and Philadelphia Vireo (sounds like Red-eyed Vireo). 
 
-Identification is based on 3-second segments, and for some species (e.g. Brown Thrasher) a longer segment would be better. I plan to explore that more in future. Also, sometimes a segment includes just the beginning or end of a song, which can lead to misidentification. 
+Identification is based on 3-second segments, and for some species (e.g. Brown Thrasher) a longer segment would be better. I plan to explore that more in future. 
 
-The current list is missing a number of species, especially shorebirds and waterfowl, so adding species is another future task. Also, it's missing sound types for many species. For example, flight calls and juvenile begging sounds are mostly missing. That's partly due to difficulty getting enough good recordings of these sounds, but it's certainly an area for further work. Chip calls also tend to be under-represented, so more data should be collected there.
+The current list is missing a number of species, especially shorebirds and waterfowl, so adding species is another future task. Also, it's missing sound types for many species. For example, juvenile begging sounds are mostly missing. That's partly due to difficulty getting enough good recordings of these sounds, but it's certainly an area for further work.
 
 Finally, HawkEars does not currently account for date or location, which could be used to adjust the likelihood or filter out certain species. On the other hand, off-season rarities do occur, so we have to be careful about our assumptions.   
 
-## Preparing to Train Your Own Model
+## Training Your Own Model
 Setting up your own model mostly consists of finding good recordings, selecting segments within the recordings, and converting them to spectrograms stored in a SQLite database (see Implementation Notes below). Basic steps are as follows:
 
 1. Create a directory per species, where recordings for the species will be stored.
@@ -88,16 +88,13 @@ Setting up your own model mostly consists of finding good recordings, selecting 
 5. Review the spectrograms and update specs.txt as required (mainly to delete bad ones).
 6. Run "extract.py -m 2" to insert the curated spectrograms into the database.
 
-(more content required here)
-
-## Training Your Own Model
 Model training is performed by train.py. To see available parameters, type:
 
 ```
 python train.py -h
 ```
 
-(more content required here)
+If this is something you want to do, and you would like some help, please contact me, e.g. by posting an issue to this repository.
 
 ## Implementation Notes
 ### Neural Networks
