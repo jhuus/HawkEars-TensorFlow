@@ -63,6 +63,8 @@ After running analysis, you can view the output by opening an audio file in Auda
 
 ![](audacity-labels.png)
 
+The numeric suffix on each label is a confidence level, which is not the same as a statistical probability. 
+
 To show spectrograms by default in Audacity, click Edit / Preferences / Tracks and set Default View Mode = Spectrogram. You can modify the spectrogram settings under Edit / Preferences / Tracks / Spectrograms.
 
 You can click a label to view or listen to that segment. You can also edit a label if a bird is misidentified, or delete and insert labels, and then export the edited label file for use as input to another process. Label files are simple text files and easy to process for data analysis purposes.
@@ -98,8 +100,14 @@ python train.py -h
 (more content required here)
 
 ## Implementation Notes
-### Neural Network
-The neural network used by HawkEars is based on the EfficientNetV2 design introduced in [this paper](https://arxiv.org/abs/2104.00298). It is an image-classification network, trained on spectrogram images. The implementation is in model/efficientnet_v2.py.   
+### Neural Networks
+The neural networks used by HawkEars are based on the EfficientNetV2 design introduced in [this paper](https://arxiv.org/abs/2104.00298). It is an image-classification network, trained on spectrogram images. The implementation is in model/efficientnet_v2.py. HawkEars uses three trained models, which are saved under the data folder:
+
+1. binary_classifier_ckpt is a single-label image classifier used to detect loud low-frequency noise during spectrogram creation.
+2. ckpt_s is a single-label image classifier used to detect non-overlapping bird sounds.
+3. ckpt_m is a multi-label image classifier used to detect overlapping bird sounds.
+
+When running analyze.py, the -p1 and -p2 parameters control the use of ckpt_s and ckpt_m. If predictions from both models exceed p1, or if the multi-label prediction exceeds p2, a label is created. The multi-label model is more sensitive, detecting more true positives but also more false positives. Setting p2 > p1 helps to limit the false positives.  
 
 ### Spectrograms
 Spectrograms are extracted from audio files in core/audio.py, then compressed and saved to a SQLite database. 
