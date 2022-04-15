@@ -10,6 +10,7 @@ import warnings
 
 warnings.filterwarnings('ignore') # suppress librosa warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' # 1 = no info, 2 = no warnings, 3 = no errors
+os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 
 import numpy as np
 import tensorflow as tf
@@ -105,7 +106,8 @@ class Analyzer:
             start_seconds = self.start_seconds
 
         if self.end_seconds is None:
-            end_seconds = (len(signal) / rate) - constants.SEGMENT_LEN
+            # ensure >= 1 so offset 0 is included for very short recordings
+            end_seconds = max(1, (len(signal) / rate) - constants.SEGMENT_LEN)
         else:
             end_seconds = self.end_seconds
 
@@ -116,7 +118,12 @@ class Analyzer:
         
         specs = self._get_specs(offsets)
         predictions_s = self.model_s.predict(specs)
-        predictions_m = self.model_m.predict(specs)
+
+        if self.min_prob_m <= 1:
+            predictions_m = self.model_m.predict(specs)
+        else:
+            predictions_m = None
+
         return predictions_s, predictions_m, offsets
 
     def _get_seconds_from_time_string(self, time_str):
@@ -162,8 +169,14 @@ class Analyzer:
         for i in range(len(predictions_s)):
             for j in range(len(predictions_s[i])):
                 self.class_infos[j].probs_s.append(predictions_s[i][j])
-                self.class_infos[j].probs_m.append(predictions_m[i][j])
-                if (predictions_s[i][j] >= self.min_prob_s and predictions_m[i][j] >= self.min_prob_s) or predictions_m[i][j] >= self.min_prob_m:
+
+                if predictions_m is None:
+                    self.class_infos[j].probs_m.append(predictions_s[i][j])
+                else:
+                    self.class_infos[j].probs_m.append(predictions_m[i][j])
+
+                if ((predictions_s[i][j] >= self.min_prob_s and (predictions_m is None or predictions_m[i][j] >= self.min_prob_s)) or 
+                    (predictions_m is not None and predictions_m[i][j] >= self.min_prob_m)):
                     self.class_infos[j].has_label = True
 
         # generate labels for one class at a time
@@ -270,6 +283,10 @@ if __name__ == '__main__':
     parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional')
     parser.add_argument('-x', type=int, default=1, help='1 = Ignore classes listed in ignore.txt, 0 = do not. Default = 1')
     args = parser.parse_args()
-        
+
+    if args.p1 < 0 or args.p2 < 0:
+        print('Error: p1 and p2 must be >= 0')
+        quit()
+
     analyzer = Analyzer(args.d, args.i, args.o, args.p1, args.p2, args.s, args.e, args.b, args.m, args.x)
     analyzer.run()
