@@ -15,7 +15,7 @@ import zlib
 from collections import namedtuple
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' # 1 = no info, 2 = no warnings, 3 = no errors
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 
 import tensorflow as tf
 from tensorflow import keras
@@ -72,6 +72,7 @@ class Trainer:
                 if self.parameters.multilabel:
                     class_act = 'sigmoid'
                 else:
+                    # used only for spectrogram search, so disable Monte Carlo dropout
                     class_act = 'softmax'
 
                 model = efficientnet_v2.EfficientNetV2(
@@ -82,7 +83,7 @@ class Trainer:
                         classifier_activation=class_act,
                         dropout=0.15,
                         drop_connect_rate=0.25)
-                        
+
             opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
 
             if self.parameters.multilabel:
@@ -115,7 +116,7 @@ class Trainer:
         options = tf.data.Options()
         options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
         
-        datagen = data_generator.DataGenerator(self.x_train, self.y_train, seed=self.parameters.seed, 
+        datagen = data_generator.DataGenerator(self.db, self.x_train, self.y_train, seed=self.parameters.seed, 
                                                binary_classifier=self.parameters.binary_classifier, multilabel=self.parameters.multilabel)
         train_ds = tf.data.Dataset.from_generator(
             datagen, 
@@ -162,7 +163,8 @@ class Trainer:
                 text_output.write(f'EfficientNetV2 config: {self.parameters.eff_config}\n')
                 text_output.write(f'Batch size: {self.parameters.batch_size}\n')
                 text_output.write(f'Epochs: {self.parameters.epochs}\n')
-                text_output.write(f'Training loss: {history.history["loss"][-1]:.3f}\n')
+
+                text_output.write(f"Training loss: {history.history['loss'][-1]:.3f}\n")
                 text_output.write(f'Training accuracy: {training_accuracy:.3f}\n')
 
                 if len(self.x_test) > 0:
@@ -364,7 +366,7 @@ class Trainer:
                 specs = self.db.get_spectrograms_by_recording_id(recording_id)
                
                 for j in range(len(specs)):
-                    spec, offset = specs[j]
+                    spec, offset, _ = specs[j]
                     if spec_index in self.test_indices[i].keys():
                         # test spectrograms are expanded here
                         self.spec_file_name[test_index] = f'{file_name}-{offset}' # will be used in names of files written to misident folder
@@ -443,6 +445,8 @@ if __name__ == '__main__':
         tf.config.threading.set_inter_op_parallelism_threads(1)
         tf.config.threading.set_intra_op_parallelism_threads(1)
 
-    keras.mixed_precision.set_global_policy("mixed_float16") # trains 25-30% faster
+    # mixed precision trains 25-30% faster but limits portability, so use for test runs only
+    # keras.mixed_precision.set_global_policy("mixed_float16")
+
     trainer = Trainer(parameters)
     trainer.run()
