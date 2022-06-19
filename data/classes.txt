@@ -7,6 +7,7 @@ Noise,Noise
 Red Squirrel,Red Squirrel
 Rooster,Rooster
 Spring Peeper,Spring Peeper
+Gray Treefrog,Gray Treefrog
 
 # These bird species are included in the provided model
 Acadian Flycatcher,ACFL
