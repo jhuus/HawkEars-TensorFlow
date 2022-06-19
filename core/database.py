@@ -82,6 +82,7 @@ class Database:
                     ID INTEGER PRIMARY KEY AUTOINCREMENT,
                     RecordingID INTEGER NOT NULL,
                     Value BLOB NOT NULL,
+                    Encoding BLOB,
                     Offset REAL,
                     Type TEXT)
             '''
@@ -414,7 +415,7 @@ class Database:
     def get_spectrograms_by_recording_id(self, recording_id):
         try:
             query = f'''
-                SELECT Value, Offset FROM Spectrogram
+                SELECT Value, Offset, Encoding FROM Spectrogram
                 WHERE RecordingID = {recording_id}
                 ORDER BY ID
             '''
@@ -426,10 +427,43 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database get_spectrograms_by_recording_id: {e}')
 
+    def get_spectrograms_by_recording_id2(self, recording_id):
+        try:
+            query = f'''
+                SELECT ID, Offset FROM Spectrogram
+                WHERE RecordingID = {recording_id}
+                ORDER BY ID
+            '''
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            result = cursor.fetchall()
+            return result
+            
+        except sqlite3.Error as e:
+            print(f'Error in database get_spectrograms_by_recording_id2: {e}')
+
     def get_spectrogram_details_by_name(self, subcategory_name):
         try:
             query = f'''
-                SELECT Recording.FileName, Offset, Value FROM Spectrogram
+                SELECT Recording.FileName, Offset, Value, Encoding FROM Spectrogram
+                INNER JOIN Recording ON RecordingID = Recording.ID
+                WHERE RecordingID IN 
+                    (SELECT ID FROM Recording WHERE SubcategoryID IN
+                        (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}"))
+                ORDER BY Recording.FileName, Offset
+            '''
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            result = cursor.fetchall()
+            return result
+            
+        except sqlite3.Error as e:
+            print(f'Error in database get_spectrogram_details_by_name: {e}')
+
+    def get_spectrogram_details_by_name_2(self, subcategory_name):
+        try:
+            query = f'''
+                SELECT Spectrogram.ID, Recording.ID, Value, Offset FROM Spectrogram
                 INNER JOIN Recording ON RecordingID = Recording.ID
                 WHERE RecordingID IN 
                     (SELECT ID FROM Recording WHERE SubcategoryID IN
@@ -599,19 +633,28 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database insert_recording: {e}')
         
-    def insert_spectrogram(self, recording_id, value, offset, type=''):
+    def insert_spectrogram(self, recording_id, value, offset, encoding=None, type=''):
         try:
-            query = '''
-                INSERT INTO Spectrogram (RecordingID, Value, Offset, Type)
-                Values (?, ?, ?, ?)
-            '''
-            cursor = self.conn.cursor()
-            cursor.execute(query, (recording_id, value, offset, type))
+            if encoding is None:
+                query = '''
+                    INSERT INTO Spectrogram (RecordingID, Value, Offset, Type)
+                    Values (?, ?, ?, ?)
+                '''
+                cursor = self.conn.cursor()
+                cursor.execute(query, (recording_id, value, offset, type))
+            else:
+                query = '''
+                    INSERT INTO Spectrogram (RecordingID, Value, Offset, Type, Encoding)
+                    Values (?, ?, ?, ?, ?)
+                '''
+                cursor = self.conn.cursor()
+                cursor.execute(query, (recording_id, value, offset, type, encoding))
+
             self.conn.commit()
             return cursor.lastrowid
         except sqlite3.Error as e:
             print(f'Error in database insert_spectrogram: {e}')
-        
+
     def insert_source(self, source):
         try:
             query = '''
@@ -636,4 +679,42 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database insert_subcategory: {e}')
             
+    def update_recording_source_id(self, id, new_source_id):
+        try:
+            query = '''
+                UPDATE Recording SET SourceID = ? WHERE ID = ?
+            '''
+            cursor = self.conn.cursor()
+            cursor.execute(query, (new_source_id, id))
+
+            self.conn.commit()
+            return cursor.lastrowid
+        except sqlite3.Error as e:
+            print(f'Error in database update_recording_source_id: {e}')
+
+    def update_spectrogram_encoding(self, id, encoding):
+        try:
+            query = '''
+                UPDATE Spectrogram SET Encoding = ? WHERE ID = ?
+            '''
+            cursor = self.conn.cursor()
+            cursor.execute(query, (encoding, id))
+
+            self.conn.commit()
+            return cursor.lastrowid
+        except sqlite3.Error as e:
+            print(f'Error in database update_spectrogram_encoding: {e}')
             
+    def update_spectrogram_recording_id(self, id, new_recording_id):
+        try:
+            query = '''
+                UPDATE Spectrogram SET RecordingID = ? WHERE ID = ?
+            '''
+            cursor = self.conn.cursor()
+            cursor.execute(query, (new_recording_id, id))
+
+            self.conn.commit()
+            return cursor.lastrowid
+        except sqlite3.Error as e:
+            print(f'Error in database update_spectrogram_recording_id: {e}')
+
