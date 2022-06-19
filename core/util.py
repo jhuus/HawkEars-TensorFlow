@@ -1,5 +1,6 @@
 # Utility functions
 
+import math
 import os
 import sys
 import zlib
@@ -47,15 +48,16 @@ def compress_spectrogram(data):
     return compressed
 
 # decompress a spectrogram, then convert from bytes to floats and reshape it
-def expand_spectrogram(spec, binary_classifier=False):
+def expand_spectrogram(spec, binary_classifier=False, reshape=True):
     bytes = zlib.decompress(spec)
     spec = np.frombuffer(bytes, dtype=np.uint8) / 255
     spec = spec.astype(np.float32)
     
-    if binary_classifier:
-        spec = spec.reshape(constants.BINARY_SPEC_HEIGHT, constants.SPEC_WIDTH, 1)
-    else:
-        spec = spec.reshape(constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1)
+    if reshape:
+        if binary_classifier:
+            spec = spec.reshape(constants.BINARY_SPEC_HEIGHT, constants.SPEC_WIDTH, 1)
+        else:
+            spec = spec.reshape(constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1)
     
     return spec
 
@@ -71,7 +73,7 @@ def get_audio_files(path):
                 if ext != None and len(ext) > 0 and ext.lower() in AUDIO_EXTS:
                     files.append(file_path)
     
-    return files
+    return sorted(files)
     
 # return list of strings representing the lines in a text file,
 # removing leading and trailing whitespace and ignoring blank lines 
@@ -120,4 +122,3 @@ def is_audio_file(file_path):
             return True
     
     return False
-  
