@@ -18,10 +18,12 @@ from tensorflow import keras
 
 from core import audio
 from core import constants
+from core import plot
 from core import util
 
-# when checking if adjacent segment matches species, use self.min_prob minus this
-SUBTRACT_ADJACENT_PROB = 0.20
+TOP_N = 4 # number of top matches to log in debug mode
+ADJACENT_PROB_FACTOR = 0.60 # when checking if adjacent segment matches species, use self.min_prob times this
+DENOISED_PROB_FACTOR = 0.45 # check denoised prediction if std one is >= min_prob times this
 
 class ClassInfo:
     def __init__(self, name, code, ignore):
@@ -32,8 +34,7 @@ class ClassInfo:
 
     def reset(self):
         self.has_label = False
-        self.probs_s = [] # from single-label model predictions (one per segment)
-        self.probs_m = [] # from multi-label model predictions (one per segment)
+        self.probs = [] # predictions (one per segment)
 
 class Label:
     def __init__(self, class_name, probability, start_time, end_time):
@@ -43,21 +44,20 @@ class Label:
         self.end_time = end_time
 
 class Analyzer:
-    def __init__(self, class_file_path, input_path, output_path, min_prob_s, min_prob_m, start_time, 
-                 end_time, use_codes, segmentation_mode, use_ignore_file):
+    def __init__(self, class_file_path, input_path, output_path, min_prob, start_time, 
+                 end_time, use_codes, use_ignore_file, debug_mode, check_adjacent):
                  
-        self.ckpt_path_s = 'data/ckpt_s' # single-label model
-        self.ckpt_path_m = 'data/ckpt_m' # multi-label model
+        self.ckpt_path = 'data/ckpt'
         self.class_file_path = class_file_path
         self.input_path = input_path.strip()
         self.output_path = output_path.strip()
-        self.min_prob_s = min_prob_s # for single-label model
-        self.min_prob_m = min_prob_m # for multi-label model
+        self.min_prob = min_prob
         self.start_seconds = self._get_seconds_from_time_string(start_time)
         self.end_seconds = self._get_seconds_from_time_string(end_time)
         self.use_codes = (use_codes == 1)
-        self.segmentation_mode = segmentation_mode
         self.use_ignore_file = (use_ignore_file == 1)
+        self.debug_mode = (debug_mode == 1)
+        self.check_adjacent = (check_adjacent == 1)
         
         if self.start_seconds != None and self.end_seconds != None and self.end_seconds <= self.start_seconds:
             print('Error: end time must be greater than start time')
@@ -89,8 +89,24 @@ class Analyzer:
             class_infos.append(ClassInfo(klass, class_dict[klass], ignore))
 
         return class_infos
+        
+    def _get_file_list(self):
+        if os.path.isdir(self.input_path):
+            return util.get_audio_files(self.input_path)
+        elif util.is_audio_file(self.input_path):
+            return [self.input_path]
+        else:
+            print(f'{self.input_path} is not a directory or an audio file.')
+            sys.exit()
 
-    # return predictions for both the single and multi-label models
+    def _get_prediction(self, prediction, denoised_prediction):
+        # use the standard prediction if it is big enough or small enough
+        if prediction >= self.min_prob or prediction < self.min_prob * DENOISED_PROB_FACTOR:
+            return prediction
+
+        # the standard prediction is close but not quite high enough, so factor in the denoised one
+        return max(prediction, denoised_prediction)
+
     def _get_predictions(self, signal, rate):  
         # if needed, pad the signal with zeros to get the last spectrogram
         total_seconds = len(signal) / rate
@@ -105,26 +121,37 @@ class Analyzer:
         else:
             start_seconds = self.start_seconds
 
-        if self.end_seconds is None:
+        if self.debug_mode:
+            end_seconds = start_seconds + constants.SEGMENT_LEN # just do one segment in debug mode
+        elif self.end_seconds is None:
             # ensure >= 1 so offset 0 is included for very short recordings
             end_seconds = max(1, (len(signal) / rate) - constants.SEGMENT_LEN)
         else:
             end_seconds = self.end_seconds
-
-        if self.segmentation_mode == 0:
-            offsets = np.arange(start_seconds, end_seconds, 1.0).tolist()
-        else:
-            offsets = np.arange(start_seconds, end_seconds, 3.0).tolist()
         
-        specs = self._get_specs(offsets)
-        predictions_s = self.model_s.predict(specs)
+        specs = self._get_specs(start_seconds, end_seconds)
 
-        if self.min_prob_m <= 1:
-            predictions_m = self.model_m.predict(specs)
-        else:
-            predictions_m = None
+        # get a second set of specs with noise removed
+        denoiser = keras.models.load_model("data/denoiser", compile=False)
+        denoised_temp = denoiser.predict(specs)
+        denoised_specs = np.zeros((len(self.offsets), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+        for i in range(len(self.offsets)):
+            spec = denoised_temp[i] / denoised_temp[i].max() # make the max 1
+            denoised_specs[i] = np.clip(spec, 0, 1) # clip negative values
 
-        return predictions_s, predictions_m, offsets
+        predictions = self.model.predict(specs)
+        denoised_predictions = self.model.predict(denoised_specs)
+
+        if self.debug_mode:
+            self._log_predictions(predictions, denoised_predictions)
+
+        # populate class_infos with predictions
+        for i in range(len(self.offsets)):
+            for j in range(len(self.class_infos)):
+                    value = self._get_prediction(predictions[i][j], denoised_predictions[i][j])
+                    self.class_infos[j].probs.append(value)
+                    if (self.class_infos[j].probs[-1] >= self.min_prob):
+                        self.class_infos[j].has_label = True
 
     def _get_seconds_from_time_string(self, time_str):
         time_str = time_str.strip()
@@ -139,17 +166,50 @@ class Analyzer:
         if len(tokens) > 1:
             seconds += 60 * int(tokens[-2])
 
-        seconds += int(tokens[-1])
+        seconds += float(tokens[-1])
         return seconds
-        
-    # get a list of spectrograms for the given offsets
-    def _get_specs(self, offsets):
-        spec_list = self.audio.get_spectrograms(offsets)
-        spec_array = np.zeros((len(offsets), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
-        for i in range(len(offsets)):
-            spec = spec_list[i].reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
-            spec_array[i] = spec.astype(np.float32)
-            
+
+    # get the list of spectrograms;
+    # for performance, call get_spectrograms on non-overlapping offsets,
+    # then create overlapping ones from those
+    def _get_specs(self, start_seconds, end_seconds):
+        offsets = np.arange(start_seconds, end_seconds, constants.SEGMENT_LEN).tolist()
+        raw_specs = self.audio.get_spectrograms(offsets, check_noise=False, update_levels=False)
+
+        specs = []
+        sec_width = int(constants.SPEC_WIDTH / constants.SEGMENT_LEN) # width of one second of spectrogram
+        self.offsets = np.arange(start_seconds, end_seconds, 1.0).tolist()
+        for i in range(len(self.offsets)):
+            src_idx = int(i / constants.SEGMENT_LEN)
+            mod = i % constants.SEGMENT_LEN
+            if mod == 0:
+                # no overlap
+                spec = raw_specs[src_idx]
+            elif src_idx < len(offsets) - 1:
+                # concatenate parts of two spectrograms to create an overlapping one
+                spec = np.zeros((constants.SPEC_HEIGHT, constants.SPEC_WIDTH))
+                offset = (constants.SEGMENT_LEN - mod) * sec_width
+                spec[:, :offset] = raw_specs[src_idx][:, mod * sec_width:]
+                spec[:, offset:] = raw_specs[src_idx + 1][:, :mod * sec_width]
+
+            specs.append(spec)
+
+        # check low noise and update levels now that overlapping spectrograms have been created
+        self.audio.dampen_low_noise(specs)
+        self.audio.update_levels(specs)
+
+        for i in range(len(specs)):
+            # normalize values between 0 and 1
+            max = specs[i].max()
+            if max > 0:
+                specs[i] /= max
+                
+            specs[i] = specs[i].clip(0, 1)
+
+        spec_array = np.zeros((len(specs), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+        for i in range(len(specs)):
+            spec_array[i] = specs[i].reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1)).astype(np.float32)
+
         return spec_array
 
     def _analyze_file(self, file_path):
@@ -160,27 +220,16 @@ class Analyzer:
             class_info.reset()
 
         signal, rate = self.audio.load(file_path)
+
         if not self.audio.have_signal:
             return
 
-        predictions_s, predictions_m, offsets = self._get_predictions(signal, rate)
-
-        # populate class_infos with predictions
-        for i in range(len(predictions_s)):
-            for j in range(len(predictions_s[i])):
-                self.class_infos[j].probs_s.append(predictions_s[i][j])
-
-                if predictions_m is None:
-                    self.class_infos[j].probs_m.append(predictions_s[i][j])
-                else:
-                    self.class_infos[j].probs_m.append(predictions_m[i][j])
-
-                if ((predictions_s[i][j] >= self.min_prob_s and (predictions_m is None or predictions_m[i][j] >= self.min_prob_s)) or 
-                    (predictions_m is not None and predictions_m[i][j] >= self.min_prob_m)):
-                    self.class_infos[j].has_label = True
+        self._get_predictions(signal, rate)
 
         # generate labels for one class at a time
         labels = []
+        min_adj_prob = self.min_prob * ADJACENT_PROB_FACTOR # in mode 0, adjacent segments need this prob at least
+
         for class_info in self.class_infos:
             if class_info.ignore or not class_info.has_label:
                 continue
@@ -191,43 +240,34 @@ class Analyzer:
                 name = class_info.name
 
             prev_label = None
-            probs_s = class_info.probs_s
-            probs_m = class_info.probs_m
-            min_adj_prob_s = self.min_prob_s - SUBTRACT_ADJACENT_PROB # in mode 0, adjacent segments need this prob at least
-            min_adj_prob_m = self.min_prob_m - SUBTRACT_ADJACENT_PROB # in mode 0, adjacent segments need this prob at least
-            for i in range(len(probs_s)):
-                # create a label if both models exceed min_prob_s (p1) or multi-label model exceeds min_prob_m (p2) 
-                if probs_s[i] >= self.min_prob_s and probs_m[i] >= self.min_prob_s:
-                    use_multi = False
-                    use_prob = probs_s[i]
-                elif probs_m[i] >= self.min_prob_m:
-                    use_multi = True
-                    use_prob = probs_m[i]
+            probs = class_info.probs
+            for i in range(len(probs)):
+
+                # create a label if probability exceeds the threshold 
+                if probs[i] >= self.min_prob:
+                    use_prob = probs[i]
                 else:
                     continue
 
-                end_time = offsets[i]+constants.SEGMENT_LEN
-                if self.segmentation_mode == 0:
-                    if i not in [0, len(probs_s) - 1]:
-                        if use_multi:
-                            if probs_m[i - 1] < min_adj_prob_m and probs_m[i + 1] < min_adj_prob_m:
-                                continue
-                        elif probs_s[i - 1] < min_adj_prob_s and probs_s[i + 1] < min_adj_prob_s:
+                end_time = self.offsets[i]+constants.SEGMENT_LEN
+                if self.check_adjacent:
+                    if i not in [0, len(probs) - 1]:
+                        if probs[i - 1] < min_adj_prob and probs[i + 1] < min_adj_prob:
                             continue
 
-                    if prev_label != None and prev_label.end_time >= offsets[i]:
+                    if prev_label != None and prev_label.end_time >= self.offsets[i]:
                         # extend the previous label's end time (i.e. merge)
                         prev_label.end_time = end_time
                         prev_label.probability = max(use_prob, prev_label.probability)
                     else:
-                        label = Label(name, use_prob, offsets[i], end_time)
+                        label = Label(name, use_prob, self.offsets[i], end_time)
                         labels.append(label)
                         prev_label = label
                 else:
-                    label = Label(name, use_prob, offsets[i], end_time)
+                    label = Label(name, use_prob, self.offsets[i], end_time)
                     labels.append(label)
                     prev_label = label
-                
+
         self._save_labels(labels, file_path)
 
     def _save_labels(self, labels, file_path):
@@ -243,22 +283,36 @@ class Analyzer:
         except:
             print(f'Unable to write file {output_path}')
             sys.exit()
-        
-    def _get_file_list(self):
-        if os.path.isdir(self.input_path):
-            return util.get_audio_files(self.input_path)
-        elif util.is_audio_file(self.input_path):
-            return [self.input_path]
-        else:
-            print(f'{self.input_path} is not a directory or an audio file.')
-            sys.exit()
-        
+
+    # in debug mode, output the top predictions
+    def _log_predictions(self, predictions, denoised_predictions):
+        predictions = np.copy(predictions[0])
+        print("\ntop predictions")
+
+        for i in range(TOP_N):
+            j = np.argmax(predictions)
+            code = self.class_infos[j].code
+            confidence = predictions[j]
+            print(f"{code}: {confidence}")
+            predictions[j] = 0
+
+        print("\ntop predictions (denoised)")
+
+        denoised_predictions = np.copy(denoised_predictions[0])
+        for i in range(TOP_N):
+            j = np.argmax(denoised_predictions)
+            code = self.class_infos[j].code
+            confidence = denoised_predictions[j]
+            print(f"{code}: {confidence}")
+            denoised_predictions[j] = 0
+
+        print("")
+
     def run(self):
         file_list = self._get_file_list()
 
-        # load the single and multi-label models
-        self.model_s = keras.models.load_model(self.ckpt_path_s, compile=False)
-        self.model_m = keras.models.load_model(self.ckpt_path_m, compile=False)
+        # load the model
+        self.model = keras.models.load_model(self.ckpt_path, compile=False)
         
         start_time = time.time()
         for file_path in file_list:
@@ -272,21 +326,21 @@ class Analyzer:
 if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
+    parser.add_argument('-a', type=int, default=1, help='1 = Ignore if neither adjacent/overlapping spectrogram matches. Default = 1')
     parser.add_argument('-b', type=int, default=0, help='0 = Use species names in labels, 1 = Use banding codes. Default = 0')
     parser.add_argument('-d', type=str, default=constants.CLASSES_FILE, help='Class file path. Default=data/classes.txt')
     parser.add_argument('-e', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional')
+    parser.add_argument('-g', type=int, default=0, help='1 = debug mode (analyze one spectrogram only, and output several top candidates). Default = 0')
     parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default')
-    parser.add_argument('-m', type=int, default=0, help='Segmentation mode. 0 = every 1 second (and compare & merge neighbours), 1 = every 3 seconds. Default = 0')
     parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is current directory')
-    parser.add_argument('-p1', type=float, default=0.75, help='Minimum confidence level for single-label model. Default = 0.75')
-    parser.add_argument('-p2', type=float, default=0.85, help='Minimum confidence level for multi-label model. Default = 0.85')
+    parser.add_argument('-p', type=float, default=0.87, help='Minimum confidence level. Default = 0.87')
     parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional')
     parser.add_argument('-x', type=int, default=1, help='1 = Ignore classes listed in ignore.txt, 0 = do not. Default = 1')
     args = parser.parse_args()
 
-    if args.p1 < 0 or args.p2 < 0:
-        print('Error: p1 and p2 must be >= 0')
+    if args.p < 0:
+        print('Error: p must be >= 0')
         quit()
 
-    analyzer = Analyzer(args.d, args.i, args.o, args.p1, args.p2, args.s, args.e, args.b, args.m, args.x)
+    analyzer = Analyzer(args.d, args.i, args.o, args.p, args.s, args.e, args.b, args.x, args.g, args.a)
     analyzer.run()
