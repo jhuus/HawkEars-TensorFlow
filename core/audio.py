@@ -1,16 +1,16 @@
 # Audio processing, especially extracting and returning 3-second spectrograms.
 # This code was copied from https://github.com/kahst/BirdNET and then substantially modified.
 
+import random
+
+import colorednoise as cn
 import ffmpeg
 import numpy as np
 import scipy
 import scipy.signal
-import math
-import sys
 
 from . import binary_classifier
 from core import constants
-from core import util
 
 class Audio:
     def __init__(self, path_prefix=''):
@@ -22,11 +22,7 @@ class Audio:
         wn = np.array([constants.FMIN, constants.FMAX]) / (constants.SAMPLING_RATE / 2.0)
         order = 4
         filter_sos = scipy.signal.butter(order, wn, btype='bandpass', output='sos')
-
-        fname = 'bandpass_' + str(constants.SAMPLING_RATE) + '_' + str(constants.FMIN) + '_' + str(constants.FMAX)
-        self.cache[fname] = filter_sos
-
-        return scipy.signal.sosfiltfilt(self.cache[fname], sig)
+        return scipy.signal.sosfiltfilt(filter_sos, sig)
         
     def _get_mel_filterbanks(self, num_banks, f_vec, dtype=np.float32):
         '''
@@ -208,20 +204,46 @@ class Audio:
                 
         return offsets
 
-    # return a Gaussian noise spectrogram with values in [center, 1 - clip];
-    # clip is selected randomly in [min_clip, max_clip] and larger clip values make it sparser 
-    def noise(self, shape=(constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1), center=0, stdev=1, min_clip=0.05, max_clip=0.25):
-        spec = np.random.normal(center, stdev, shape)
-        spec = spec / np.max(spec)
-        clip = np.random.uniform(min_clip, max_clip)
-        spec = np.clip(spec, clip, 1)
-        spec = spec - clip
-        return spec
-        
+    # return a pink noise spectrogram with values in range [0, 1]
+    def pink_noise(self):
+        beta = random.uniform(1.2, 1.6)
+        samples = constants.SEGMENT_LEN * constants.SAMPLING_RATE
+        segment = cn.powerlaw_psd_gaussian(beta, samples)
+        shape = (constants.SPEC_HEIGHT, constants.SPEC_WIDTH)
+        spec = self._get_raw_spectrogram(segment, shape)
+        spec = spec / spec.max() # normalize to [0, 1]
+        return spec.reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+
+    def dampen_low_noise(self, specs, low_idx=5, high_idx=15, low_mult=2.0):
+        is_noise, high_max = self.binary_classifier.check_for_noise(specs, low_idx, high_idx, low_mult)
+
+        for i in range(len(specs)):
+            if is_noise[i]:
+                # there are loud sounds in the low frequencies, and it's noise;
+                # dampen it so quieter high frequency sounds don't disappear during normalization
+                for row in range(high_idx):
+                    row_max = np.max(specs[i][row:row+1,:])
+                    if row_max > high_max[i]:
+                        # after this, the loudest low frequency sound will be as loud as the loudest high frequency sound,
+                        # and quieter low frequency sounds are affected less
+                        specs[i][row:row+1,:] = (specs[i][row:row+1,:] ** 0.5) * (high_max[i] / (row_max ** 0.5))
+
+    def update_levels(self, specs, exponent=0.8, row_factor=0.8):
+        for i in range(len(specs)):
+            # this brings out faint sounds, but also increases noise;
+            # increasing exponent gives less noise but loses some faint sounds
+            specs[i] = specs[i] ** exponent
+
+            # for each frequency, subtract a multiple of the average amplitude
+            if row_factor > 0:
+                num_freqs = specs[i].shape[0]
+                for j in range(num_freqs):
+                    specs[i][j] -= row_factor * np.average(specs[i][j])
+
     # return list of spectrograms for the given offsets (i.e. starting points in seconds);
     # you have to call load() before calling this
     def get_spectrograms(self, offsets, shape=(constants.SPEC_HEIGHT, constants.SPEC_WIDTH), seconds=constants.SEGMENT_LEN, binary_classifier=False,
-                         check_noise=True, low_idx=5, high_idx=15, low_mult=2.0, exponent=0.8, min_val=0, row_factor=0.8):
+                         check_noise=True, update_levels=True, low_idx=5, high_idx=15, low_mult=2.0, exponent=0.8, min_val=0, row_factor=0.8):
         if not self.have_signal:
             return None
 
@@ -241,38 +263,19 @@ class Audio:
                 specs[i] = specs[i][:constants.BINARY_SPEC_HEIGHT, :]
         else:
             if check_noise:
-                # calling this once for the list is much faster than calling it for each one sepaconstants.SAMPLING_RATEly
-                is_noise, high_max = self.binary_classifier.check_for_noise(specs, low_idx, high_idx, low_mult)
+                self.dampen_low_noise(specs, low_idx, high_idx, low_mult)
             
+            if update_levels:
+                self.update_levels(specs, exponent, row_factor)
+
+        if update_levels:
             for i in range(len(specs)):
-                if check_noise and is_noise[i]:
-                    # there are loud sounds in the low frequencies, and it's noise;
-                    # dampen it so quieter high frequency sounds don't disappear during normalization
-                    for row in range(high_idx):
-                        row_max = np.max(specs[i][row:row+1,:])
-                        if row_max > high_max[i]:
-                            specs[i][row:row+1,:] = (specs[i][row:row+1,:] ** 0.5) * (high_max[i] / (row_max ** 0.5))
-                        else:
-                            # this is for low frequency pops and crackles, so stop when it fades out
-                            break
-
-                # this brings out faint sounds, but also increases noise;
-                # increasing exponent gives less noise but loses some faint sounds
-                specs[i] = specs[i] ** exponent
-
-                # for each frequency, subtract a multiple of the average amplitude
-                if row_factor > 0:
-                    num_freqs = specs[i].shape[0]
-                    for j in range(num_freqs):
-                        specs[i][j] -= row_factor * np.average(specs[i][j])
-
-        for i in range(len(specs)):
-            # normalize values between 0 and 1
-            max = specs[i].max()
-            if max > 0:
-                specs[i] /= max
-                
-            specs[i] = specs[i].clip(min_val, 1)
+                # normalize values between 0 and 1
+                max = specs[i].max()
+                if max > 0:
+                    specs[i] /= max
+                    
+                specs[i] = specs[i].clip(min_val, 1)
 
         return specs
         
