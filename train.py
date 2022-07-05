@@ -1,5 +1,4 @@
 # Train the selected neural network model on spectrograms for birds and a few other classes.
-# Train the selected neural network model on spectrograms for birds and a few other classes.
 # To see command-line arguments, run the script with -h argument.
 
 import argparse
@@ -116,7 +115,7 @@ class Trainer:
         options = tf.data.Options()
         options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
         
-        datagen = data_generator.DataGenerator(self.db, self.x_train, self.y_train, seed=self.parameters.seed, 
+        datagen = data_generator.DataGenerator(self.db, self.x_train, self.y_train, self.train_class, seed=self.parameters.seed, 
                                                binary_classifier=self.parameters.binary_classifier, multilabel=self.parameters.multilabel)
         train_ds = tf.data.Dataset.from_generator(
             datagen, 
@@ -346,6 +345,7 @@ class Trainer:
         # initialize arrays
         self.x_train = [0 for i in range(train_total)]
         self.y_train = np.zeros((train_total, len(self.classes)))
+        self.train_class = ['' for i in range(train_total)]
         self.x_test = np.zeros((test_total, self.spec_height, constants.SPEC_WIDTH, 1))
         self.y_test = np.zeros((test_total, len(self.classes)))
         self.input_shape = (self.spec_height, constants.SPEC_WIDTH, 1)
@@ -376,6 +376,7 @@ class Trainer:
                     else:
                         # training spectrograms are expanded in data generator
                         self.x_train[train_index] = spec
+                        self.train_class[train_index] = self.classes[i]
                         self.y_train[train_index][i] = 1
                         train_index += 1
                         
