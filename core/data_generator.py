@@ -12,8 +12,8 @@ from core import constants
 from core import util
 from core import plot
 
-PROB_MERGE = 0.20  # probability of merging to train multi-label support
-PROB_AUG = 0.55    # probability of augmentation
+PROB_MERGE = 0.25  # probability of merging to train multi-label support
+PROB_AUG = 0.40    # probability of augmentation
 CACHE_LEN = 1000   # cache this many noise specs for performance
 
 MAX_SHIFT = 5      # max pixels for horizontal shift
@@ -29,13 +29,12 @@ REAL_NOISE_INDEX = 4
 SHIFT_INDEX = 5
 SPECKLE_INDEX = 6
 
-FREQS = [0.25, 0.5, 1.0, 1.0, 0.5, 0.5, 0.9]
-
 class DataGenerator():
-    def __init__(self, db, x_train, y_train, seed=None, augmentation=True, binary_classifier=False, multilabel=False):
+    def __init__(self, db, x_train, y_train, train_class, seed=None, augmentation=True, binary_classifier=False, multilabel=False):
         self.audio = audio.Audio()
         self.x_train = x_train
         self.y_train = y_train
+        self.train_class = train_class
         self.seed = seed
         self.augmentation = augmentation
         self.binary_classifier = binary_classifier
@@ -43,13 +42,14 @@ class DataGenerator():
         
         if binary_classifier:
             self.spec_height = constants.BINARY_SPEC_HEIGHT
+            freqs = np.array([0.25, 0.5, 0, 0, 0, 0.5, 0.9]) # don't add noise for binary classifier
         else:
             self.spec_height = constants.SPEC_HEIGHT
-        
+            freqs = np.array([0.25, 0.5, 1.0, 1.0, 0.5, 0.5, 0.9])
+
         self.indices = np.arange(y_train.shape[0])
         if self.augmentation:
             # convert relative frequencies to probability ranges in [0, 1]
-            freqs = np.array(FREQS)
             sum = np.sum(freqs)
             probs = freqs / sum
             self.probs = np.zeros(SPECKLE_INDEX + 1)
@@ -57,21 +57,22 @@ class DataGenerator():
             for i in range(1, SPECKLE_INDEX + 1):
                 self.probs[i] = self.probs[i - 1] + probs[i]
 
-            # create some white noise
-            self.white_noise = np.zeros((CACHE_LEN, self.spec_height, constants.SPEC_WIDTH, 1))
-            for i in range(CACHE_LEN):
-                self.white_noise[i] = skimage.util.random_noise(self.white_noise[i], mode='gaussian', seed=self.seed, var=NOISE_VARIANCE, clip=True)
+            if not binary_classifier:
+                # create some white noise
+                self.white_noise = np.zeros((CACHE_LEN, self.spec_height, constants.SPEC_WIDTH, 1))
+                for i in range(CACHE_LEN):
+                    self.white_noise[i] = skimage.util.random_noise(self.white_noise[i], mode='gaussian', seed=self.seed, var=NOISE_VARIANCE, clip=True)
 
-            # create some pink noise
-            self.pink_noise = np.zeros((CACHE_LEN, self.spec_height, constants.SPEC_WIDTH, 1))
-            for i in range(CACHE_LEN):
-                self.pink_noise[i] = self.audio.pink_noise() + self.white_noise[i]
+                # create some pink noise
+                self.pink_noise = np.zeros((CACHE_LEN, self.spec_height, constants.SPEC_WIDTH, 1))
+                for i in range(CACHE_LEN):
+                    self.pink_noise[i] = self.audio.pink_noise() + self.white_noise[i]
 
-            # get some noise spectrograms from the database
-            results = db.get_spectrograms_by_name('Denoiser')
-            self.real_noise = np.zeros((len(results), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
-            for i in range(len(self.real_noise)):
-                self.real_noise[i] = util.expand_spectrogram(results[i][0])
+                # get some noise spectrograms from the database
+                results = db.get_spectrograms_by_name('Denoiser')
+                self.real_noise = np.zeros((len(results), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+                for i in range(len(self.real_noise)):
+                    self.real_noise[i] = util.expand_spectrogram(results[i][0])
 
             self.speckle = np.zeros((CACHE_LEN, self.spec_height, constants.SPEC_WIDTH, 1))
             for i in range(CACHE_LEN):
@@ -84,11 +85,11 @@ class DataGenerator():
             spec = util.expand_spectrogram(self.x_train[id], binary_classifier=self.binary_classifier)
             label = self.y_train[id].astype(np.float32)
             
-            if self.multilabel and not self.binary_classifier:
+            if self.augmentation and self.multilabel and not self.binary_classifier and self.train_class[id] != 'Noise':
                 prob = random.uniform(0, 1)
 
                 if prob < PROB_MERGE:
-                    spec, label = self.merge_specs(spec, label)
+                    spec, label = self.merge_specs(spec, label, self.train_class[id])
 
             if self.augmentation:
                 prob = random.uniform(0, 1)
@@ -114,9 +115,15 @@ class DataGenerator():
             yield (spec.astype(np.float32), label)
     
     # pick a random spectrogram and merge it with the given one
-    def merge_specs(self, spec, label):
+    def merge_specs(self, spec, label, class_name):
         index = random.randint(0, len(self.indices) - 1)
         other_id = self.indices[index]
+
+        # loop until we get a different class that is not noise
+        while self.train_class == 'Noise' or self.train_class == class_name:
+            index = random.randint(0, len(self.indices) - 1)
+            other_id = self.indices[index]
+
         other_spec = util.expand_spectrogram(self.x_train[other_id])
         spec += other_spec
         spec = spec.clip(0, 1)
