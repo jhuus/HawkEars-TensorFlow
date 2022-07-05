@@ -21,9 +21,9 @@ from core import constants
 from core import plot
 from core import util
 
-TOP_N = 4 # number of top matches to log in debug mode
-ADJACENT_PROB_FACTOR = 0.60 # when checking if adjacent segment matches species, use self.min_prob times this
-DENOISED_PROB_FACTOR = 0.45 # check denoised prediction if std one is >= min_prob times this
+TOP_N = 6 # number of top matches to log in debug mode
+ADJACENT_PROB_FACTOR = 0.65 # when checking if adjacent segment matches species, use self.min_prob times this
+DENOISED_PROB_FACTOR = 0.55 # check denoised prediction if std one is >= min_prob times this
 
 class ClassInfo:
     def __init__(self, name, code, ignore):
@@ -333,7 +333,7 @@ if __name__ == '__main__':
     parser.add_argument('-g', type=int, default=0, help='1 = debug mode (analyze one spectrogram only, and output several top candidates). Default = 0')
     parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default')
     parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is current directory')
-    parser.add_argument('-p', type=float, default=0.87, help='Minimum confidence level. Default = 0.87')
+    parser.add_argument('-p', type=float, default=0.9, help='Minimum confidence level. Default = 0.9')
     parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional')
     parser.add_argument('-x', type=int, default=1, help='1 = Ignore classes listed in ignore.txt, 0 = do not. Default = 1')
     args = parser.parse_args()
