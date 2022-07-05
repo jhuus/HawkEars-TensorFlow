@@ -72,8 +72,6 @@ You can click a label to view or listen to that segment. You can also edit a lab
 ## Limitations
 Some bird species are difficult to identify by sound alone. This includes mimics, for obvious reasons, which is why Northern Mockingbird is not currently included in the species list. European Starlings are included, but often mimic other birds and are therefore sometimes challenging to identify. Species that have been excluded because they sound too much like other species are Boreal Chickadee (sounds like Black-capped Chickadee), Hoary Redpoll (sounds like Common Redpoll) and Philadelphia Vireo (sounds like Red-eyed Vireo). 
 
-Identification is based on 3-second segments, and for some species (e.g. Brown Thrasher) a longer segment would be better. I plan to explore that more in future. 
-
 The current list is missing a number of species, especially shorebirds and waterfowl, so adding species is another future task. Also, it's missing sound types for many species. For example, juvenile begging sounds are mostly missing. That's partly due to difficulty getting enough good recordings of these sounds, but it's certainly an area for further work.
 
 Finally, HawkEars does not currently account for date or location, which could be used to adjust the likelihood or filter out certain species. On the other hand, off-season rarities do occur, so we have to be careful about our assumptions.   
@@ -98,13 +96,7 @@ If this is something you want to do, and you would like some help, please contac
 
 ## Implementation Notes
 ### Neural Networks
-The neural networks used by HawkEars are based on the EfficientNetV2 design introduced in [this paper](https://arxiv.org/abs/2104.00298). It is an image-classification network, trained on spectrogram images. The implementation is in model/efficientnet_v2.py. HawkEars uses three trained models, which are saved under the data folder:
-
-1. binary_classifier_ckpt is a single-label image classifier used to detect loud low-frequency noise during spectrogram creation.
-2. ckpt_s is a single-label image classifier used to detect non-overlapping bird sounds.
-3. ckpt_m is a multi-label image classifier used to detect overlapping bird sounds.
-
-When running analyze.py, the -p1 and -p2 parameters control the use of ckpt_s and ckpt_m. If predictions from both models exceed p1, or if the multi-label prediction exceeds p2, a label is created. The multi-label model is more sensitive, detecting more true positives but also more false positives. Setting p2 > p1 helps to limit the false positives.  
+HawkEars uses an ensemble of three neural networks: one to detect low frequency noise during spectrogram creation, one to remove noise, and one to identify bird species. The noise detection and species identification networks are based on the EfficientNetV2 design introduced in [this paper](https://arxiv.org/abs/2104.00298). It is an image-classification network, trained on spectrogram images. The implementation is in model/efficientnet_v2.py. For noise removal, HawkEars uses [this neural network](https://github.com/keras-team/keras-io/blob/master/examples/vision/mirnet.py).
 
 ### Spectrograms
 Spectrograms are extracted from audio files in core/audio.py, then compressed and saved to a SQLite database. 
