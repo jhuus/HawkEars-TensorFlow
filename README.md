@@ -77,16 +77,7 @@ The current list is missing a number of species, especially shorebirds and water
 Finally, HawkEars does not currently account for date or location, which could be used to adjust the likelihood or filter out certain species. On the other hand, off-season rarities do occur, so we have to be careful about our assumptions.   
 
 ## Training Your Own Model
-Setting up your own model mostly consists of finding good recordings, selecting segments within the recordings, and converting them to spectrograms stored in a SQLite database (see Implementation Notes below). Basic steps are as follows:
-
-1. Create a directory per species, where recordings for the species will be stored.
-2. In the tools directory, run "extract.py -m 0" to generate labels for the recordings in directory/labels.
-3. Run "extract.py -m 1" to create a spectrogram image per label in directory/spectrograms.
-4. Generate directory/specs.txt by doing an "ls" on the spectrograms directory in Linux, or by running sortdir.py in Windows.
-5. Review the spectrograms and update specs.txt as required (mainly to delete bad ones).
-6. Run "extract.py -m 2" to insert the curated spectrograms into the database.
-
-Model training is performed by train.py. To see available parameters, type:
+Setting up your own model mostly consists of finding good recordings, selecting segments within the recordings, and converting them to spectrograms stored in a SQLite database (see Implementation Notes below). Model training is performed by train.py. To see available parameters, type:
 
 ```
 python train.py -h
