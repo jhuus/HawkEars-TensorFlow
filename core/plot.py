@@ -7,8 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from core import constants
-
-matplotlib.use('tkagg')
     
 # save a plot of a spectrogram
 def plot_spec(spec, path, binary_classifier=False, gray_scale=False):
