@@ -1,6 +1,7 @@
 # Audio processing, especially extracting and returning 3-second spectrograms.
 # This code was copied from https://github.com/kahst/BirdNET and then substantially modified.
 
+import logging
 import random
 
 import colorednoise as cn
@@ -78,15 +79,14 @@ class Audio:
         overlap_hash = {256: -87, 512: 168, 768: 426, 1024: 683, 1576: 1236, 2048: 1709, 4096: 3763}
         win_overlap = overlap_hash[constants.WIN_LEN]
 
-        # compute spectrogram
         f, t, spec = scipy.signal.spectrogram(signal,
-                                              fs=constants.SAMPLING_RATE,
-                                              window=scipy.signal.windows.hann(constants.WIN_LEN),
-                                              nperseg=constants.WIN_LEN,
-                                              noverlap=win_overlap,
-                                              nfft=n_fft,
-                                              detrend=False,
-                                              mode='magnitude')
+                                            fs=constants.SAMPLING_RATE,
+                                            window=scipy.signal.windows.hann(constants.WIN_LEN),
+                                            nperseg=constants.WIN_LEN,
+                                            noverlap=win_overlap,
+                                            nfft=n_fft,
+                                            detrend=False,
+                                            mode='magnitude')
 
         # determine the indices of where to clip the spec
         valid_f_idx_start = f.searchsorted(constants.FMIN, side='left')
@@ -277,6 +277,7 @@ class Audio:
                     
                 specs[i] = specs[i].clip(min_val, 1)
 
+        logging.info('Done creating spectrograms')
         return specs
         
     def load(self, path, filter=True):
@@ -310,5 +311,7 @@ class Audio:
 
             self.signal = None
             self.have_signal = False
-            
+
+
+        logging.info('Done loading audio file')
         return self.signal, constants.SAMPLING_RATE
