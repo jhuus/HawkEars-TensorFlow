@@ -3,6 +3,7 @@
 # with the class predictions.
 
 import argparse
+import logging
 import os
 import sys
 import time
@@ -60,7 +61,7 @@ class Analyzer:
         self.check_adjacent = (check_adjacent == 1)
         
         if self.start_seconds != None and self.end_seconds != None and self.end_seconds <= self.start_seconds:
-            print('Error: end time must be greater than start time')
+            logging.error('Error: end time must be greater than start time')
             sys.exit()
         
         # if no output path specified and input path is a directory,
@@ -96,7 +97,7 @@ class Analyzer:
         elif util.is_audio_file(self.input_path):
             return [self.input_path]
         else:
-            print(f'{self.input_path} is not a directory or an audio file.')
+            logging.error(f'Error: {self.input_path} is not a directory or an audio file.')
             sys.exit()
 
     def _get_prediction(self, prediction, denoised_prediction):
@@ -132,8 +133,7 @@ class Analyzer:
         specs = self._get_specs(start_seconds, end_seconds)
 
         # get a second set of specs with noise removed
-        denoiser = keras.models.load_model("data/denoiser", compile=False)
-        denoised_temp = denoiser.predict(specs)
+        denoised_temp = self.denoiser.predict(specs)
         denoised_specs = np.zeros((len(self.offsets), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
         for i in range(len(self.offsets)):
             spec = denoised_temp[i] / denoised_temp[i].max() # make the max 1
@@ -213,7 +213,7 @@ class Analyzer:
         return spec_array
 
     def _analyze_file(self, file_path):
-        print(f'Analyzing {file_path}')
+        logging.info(f'Analyzing {file_path}')
 
         # clear info from previous recording
         for class_info in self.class_infos:
@@ -274,14 +274,14 @@ class Analyzer:
         basename = os.path.basename(file_path)
         tokens = basename.split('.')
         output_path = os.path.join(self.output_path, f'{tokens[0]}_HawkEars_Audacity_Labels.txt')
-        print(f'Writing output to {output_path}')
+        logging.info(f'Writing output to {output_path}')
         try:
             with open(output_path, 'w') as file:
                 for label in labels:
                     file.write(f'{label.start_time:.2f}\t{label.end_time:.2f}\t{label.class_name};{label.probability:.2f}\n')
                     
         except:
-            print(f'Unable to write file {output_path}')
+            logging.error(f'Unable to write file {output_path}')
             sys.exit()
 
     # in debug mode, output the top predictions
@@ -308,20 +308,20 @@ class Analyzer:
 
         print("")
 
-    def run(self):
+    def run(self, start_time):
         file_list = self._get_file_list()
 
-        # load the model
+        # load the models
         self.model = keras.models.load_model(self.ckpt_path, compile=False)
+        self.denoiser = keras.models.load_model("data/denoiser", compile=False)
         
-        start_time = time.time()
         for file_path in file_list:
             self._analyze_file(file_path)
             
         elapsed = time.time() - start_time
         minutes = int(elapsed) // 60
         seconds = int(elapsed) % 60
-        print(f'Elapsed time for analysis = {minutes}m {seconds}s')
+        logging.info(f'Elapsed time = {minutes}m {seconds}s')
 
 if __name__ == '__main__':
     # command-line arguments
@@ -338,9 +338,13 @@ if __name__ == '__main__':
     parser.add_argument('-x', type=int, default=1, help='1 = Ignore classes listed in ignore.txt, 0 = do not. Default = 1')
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+    start_time = time.time()
+    logging.info('Initializing')
+
     if args.p < 0:
-        print('Error: p must be >= 0')
+        logging.error('Error: p must be >= 0')
         quit()
 
     analyzer = Analyzer(args.d, args.i, args.o, args.p, args.s, args.e, args.b, args.x, args.g, args.a)
-    analyzer.run()
+    analyzer.run(start_time)
