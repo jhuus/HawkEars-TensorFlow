@@ -18,7 +18,7 @@ import tensorflow as tf
 from tensorflow import keras
 
 from core import audio
-from core import constants
+from core import config as cfg
 from core import plot
 from core import util
 
@@ -45,25 +45,25 @@ class Label:
         self.end_time = end_time
 
 class Analyzer:
-    def __init__(self, class_file_path, input_path, output_path, min_prob, start_time, 
-                 end_time, use_codes, use_ignore_file, debug_mode, check_adjacent):
-                 
-        self.ckpt_path = 'data/ckpt'
-        self.class_file_path = class_file_path
+    def __init__(self, input_path, output_path, min_prob, start_time, end_time, use_codes, debug_mode, check_adjacent):
+
         self.input_path = input_path.strip()
         self.output_path = output_path.strip()
         self.min_prob = min_prob
         self.start_seconds = self._get_seconds_from_time_string(start_time)
         self.end_seconds = self._get_seconds_from_time_string(end_time)
         self.use_codes = (use_codes == 1)
-        self.use_ignore_file = (use_ignore_file == 1)
         self.debug_mode = (debug_mode == 1)
         self.check_adjacent = (check_adjacent == 1)
-        
-        if self.start_seconds != None and self.end_seconds != None and self.end_seconds <= self.start_seconds:
-            logging.error('Error: end time must be greater than start time')
-            sys.exit()
-        
+
+        if self.start_seconds is not None and self.end_seconds is not None and self.end_seconds < self.start_seconds + cfg.segment_len:
+                logging.error(f'Error: end time must be >= start time + {cfg.segment_len} seconds')
+                quit()
+
+        if self.end_seconds is not None:
+            # convert from end of last segment to start of last segment for processing
+            self.end_seconds = max(0, self.end_seconds - cfg.segment_len)
+
         # if no output path specified and input path is a directory,
         # put the output labels in the input directory
         if len(self.output_path) == 0:
@@ -71,26 +71,26 @@ class Analyzer:
                 self.output_path = self.input_path
         elif not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
-        
+
         self.class_infos = self._get_class_infos()
         self.audio = audio.Audio()
 
     def _get_class_infos(self):
-        classes = util.get_class_list(class_file_path=self.class_file_path)
-        class_dict = util.get_class_dict(class_file_path=self.class_file_path)
-        ignore_list = util.get_file_lines(constants.IGNORE_FILE)
+        classes = util.get_class_list(class_file_path=cfg.classes_file)
+        class_dict = util.get_class_dict(class_file_path=cfg.classes_file)
+        ignore_list = util.get_file_lines(cfg.ignore_file)
 
         class_infos = []
-        for klass in classes: # use "klass" since "class" is a keyword
-            if self.use_ignore_file and klass in ignore_list:
+        for class_name in classes:
+            if class_name in ignore_list:
                 ignore = True
             else:
                 ignore = False
 
-            class_infos.append(ClassInfo(klass, class_dict[klass], ignore))
+            class_infos.append(ClassInfo(class_name, class_dict[class_name], ignore))
 
         return class_infos
-        
+
     def _get_file_list(self):
         if os.path.isdir(self.input_path):
             return util.get_audio_files(self.input_path)
@@ -108,38 +108,35 @@ class Analyzer:
         # the standard prediction is close but not quite high enough, so factor in the denoised one
         return max(prediction, denoised_prediction)
 
-    def _get_predictions(self, signal, rate):  
+    def _get_predictions(self, signal, rate):
         # if needed, pad the signal with zeros to get the last spectrogram
-        total_seconds = len(signal) / rate
-        last_segment_len = total_seconds - constants.SEGMENT_LEN * (total_seconds // constants.SEGMENT_LEN)
+
+        total_seconds = self.audio.signal_len() / rate
+        last_segment_len = total_seconds - cfg.segment_len * (total_seconds // cfg.segment_len)
         if last_segment_len > 0.5:
             # more than 1/2 a second at the end, so we'd better analyze it
-            pad_amount = int(rate * (constants.SEGMENT_LEN - last_segment_len)) + 1
+            pad_amount = int(rate * (cfg.segment_len - last_segment_len)) + 1
             signal = np.pad(signal, (0, pad_amount), 'constant', constant_values=(0, 0))
-        
-        if self.start_seconds is None:
-            start_seconds = 0
-        else:
-            start_seconds = self.start_seconds
 
+        start_seconds = 0 if self.start_seconds is None else self.start_seconds
         if self.debug_mode:
-            end_seconds = start_seconds + constants.SEGMENT_LEN # just do one segment in debug mode
+            end_seconds = start_seconds # just do one segment in debug mode
         elif self.end_seconds is None:
-            # ensure >= 1 so offset 0 is included for very short recordings
-            end_seconds = max(1, (len(signal) / rate) - constants.SEGMENT_LEN)
+            end_seconds = (self.audio.signal_len() / rate) - cfg.segment_len
         else:
             end_seconds = self.end_seconds
-        
+
         specs = self._get_specs(start_seconds, end_seconds)
 
         # get a second set of specs with noise removed
         denoised_temp = self.denoiser.predict(specs)
-        denoised_specs = np.zeros((len(self.offsets), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+        denoised_specs = np.zeros((len(self.offsets), cfg.spec_height, cfg.spec_width, 1))
         for i in range(len(self.offsets)):
             spec = denoised_temp[i] / denoised_temp[i].max() # make the max 1
             denoised_specs[i] = np.clip(spec, 0, 1) # clip negative values
 
         predictions = self.model.predict(specs)
+
         denoised_predictions = self.model.predict(denoised_specs)
 
         if self.debug_mode:
@@ -169,46 +166,14 @@ class Analyzer:
         seconds += float(tokens[-1])
         return seconds
 
-    # get the list of spectrograms;
-    # for performance, call get_spectrograms on non-overlapping offsets,
-    # then create overlapping ones from those
+    # get the list of spectrograms
     def _get_specs(self, start_seconds, end_seconds):
-        offsets = np.arange(start_seconds, end_seconds, constants.SEGMENT_LEN).tolist()
-        raw_specs = self.audio.get_spectrograms(offsets, check_noise=False, update_levels=False)
+        self.offsets = np.arange(start_seconds, end_seconds + 1.0, 1.0).tolist()
+        specs = self.audio.get_spectrograms(self.offsets)
 
-        specs = []
-        sec_width = int(constants.SPEC_WIDTH / constants.SEGMENT_LEN) # width of one second of spectrogram
-        self.offsets = np.arange(start_seconds, end_seconds, 1.0).tolist()
-        for i in range(len(self.offsets)):
-            src_idx = int(i / constants.SEGMENT_LEN)
-            mod = i % constants.SEGMENT_LEN
-            if mod == 0:
-                # no overlap
-                spec = raw_specs[src_idx]
-            elif src_idx < len(offsets) - 1:
-                # concatenate parts of two spectrograms to create an overlapping one
-                spec = np.zeros((constants.SPEC_HEIGHT, constants.SPEC_WIDTH))
-                offset = (constants.SEGMENT_LEN - mod) * sec_width
-                spec[:, :offset] = raw_specs[src_idx][:, mod * sec_width:]
-                spec[:, offset:] = raw_specs[src_idx + 1][:, :mod * sec_width]
-
-            specs.append(spec)
-
-        # check low noise and update levels now that overlapping spectrograms have been created
-        self.audio.dampen_low_noise(specs)
-        self.audio.update_levels(specs)
-
+        spec_array = np.zeros((len(specs), cfg.spec_height, cfg.spec_width, 1))
         for i in range(len(specs)):
-            # normalize values between 0 and 1
-            max = specs[i].max()
-            if max > 0:
-                specs[i] /= max
-                
-            specs[i] = specs[i].clip(0, 1)
-
-        spec_array = np.zeros((len(specs), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
-        for i in range(len(specs)):
-            spec_array[i] = specs[i].reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1)).astype(np.float32)
+            spec_array[i] = specs[i].reshape((cfg.spec_height, cfg.spec_width, 1)).astype(np.float32)
 
         return spec_array
 
@@ -243,13 +208,13 @@ class Analyzer:
             probs = class_info.probs
             for i in range(len(probs)):
 
-                # create a label if probability exceeds the threshold 
+                # create a label if probability exceeds the threshold
                 if probs[i] >= self.min_prob:
                     use_prob = probs[i]
                 else:
                     continue
 
-                end_time = self.offsets[i]+constants.SEGMENT_LEN
+                end_time = self.offsets[i]+cfg.segment_len
                 if self.check_adjacent:
                     if i not in [0, len(probs) - 1]:
                         if probs[i - 1] < min_adj_prob and probs[i + 1] < min_adj_prob:
@@ -279,7 +244,7 @@ class Analyzer:
             with open(output_path, 'w') as file:
                 for label in labels:
                     file.write(f'{label.start_time:.2f}\t{label.end_time:.2f}\t{label.class_name};{label.probability:.2f}\n')
-                    
+
         except:
             logging.error(f'Unable to write file {output_path}')
             sys.exit()
@@ -312,12 +277,22 @@ class Analyzer:
         file_list = self._get_file_list()
 
         # load the models
-        self.model = keras.models.load_model(self.ckpt_path, compile=False)
-        self.denoiser = keras.models.load_model("data/denoiser", compile=False)
-        
-        for file_path in file_list:
+        self.model = keras.models.load_model(cfg.ckpt_path, compile=False)
+        self.denoiser = keras.models.load_model(cfg.denoiser_path, compile=False)
+
+        for i, file_path in enumerate(file_list):
             self._analyze_file(file_path)
-            
+
+            # this helps to avoid running out of memory on GPU
+            if (i + 1) % cfg.reset_model_counter == 0:
+                keras.backend.clear_session()
+                del self.model
+                del self.denoiser
+                del self.audio
+                self.model = keras.models.load_model(cfg.ckpt_path, compile=False)
+                self.denoiser = keras.models.load_model(cfg.denoiser_path, compile=False)
+                self.audio = audio.Audio()
+
         elapsed = time.time() - start_time
         minutes = int(elapsed) // 60
         seconds = int(elapsed) % 60
@@ -326,19 +301,17 @@ class Analyzer:
 if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-a', type=int, default=1, help='1 = Ignore if neither adjacent/overlapping spectrogram matches. Default = 1')
-    parser.add_argument('-b', type=int, default=0, help='0 = Use species names in labels, 1 = Use banding codes. Default = 0')
-    parser.add_argument('-d', type=str, default=constants.CLASSES_FILE, help='Class file path. Default=data/classes.txt')
-    parser.add_argument('-e', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional')
-    parser.add_argument('-g', type=int, default=0, help='1 = debug mode (analyze one spectrogram only, and output several top candidates). Default = 0')
-    parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default')
-    parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is current directory')
-    parser.add_argument('-p', type=float, default=0.9, help='Minimum confidence level. Default = 0.9')
-    parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional')
-    parser.add_argument('-x', type=int, default=1, help='1 = Ignore classes listed in ignore.txt, 0 = do not. Default = 1')
+    parser.add_argument('-a', type=int, default=1, help='1 = Ignore if neither adjacent/overlapping spectrogram matches. Default = 1.')
+    parser.add_argument('-b', type=int, default=0, help='0 = Use species names in labels, 1 = Use banding codes. Default = 0.')
+    parser.add_argument('-e', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional.')
+    parser.add_argument('-g', type=int, default=0, help='1 = debug mode (analyze one spectrogram only, and output several top candidates). Default = 0.')
+    parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default.')
+    parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is input directory.')
+    parser.add_argument('-p', type=float, default=0.9, help='Minimum confidence level. Default = 0.9.')
+    parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional.')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d %(message)s', datefmt='%H:%M:%S')
     start_time = time.time()
     logging.info('Initializing')
 
@@ -346,5 +319,5 @@ if __name__ == '__main__':
         logging.error('Error: p must be >= 0')
         quit()
 
-    analyzer = Analyzer(args.d, args.i, args.o, args.p, args.s, args.e, args.b, args.x, args.g, args.a)
+    analyzer = Analyzer(args.i, args.o, args.p, args.s, args.e, args.b, args.g, args.a)
     analyzer.run(start_time)
