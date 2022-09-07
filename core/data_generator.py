@@ -8,7 +8,7 @@ import skimage
 from skimage import filters
 
 from core import audio
-from core import constants
+from core import config as cfg
 from core import util
 from core import plot
 
@@ -20,8 +20,8 @@ MAX_SHIFT = 5      # max pixels for horizontal shift
 NOISE_VARIANCE = 0.0015 # larger variances lead to more noise
 SPECKLE_VARIANCE = .009
 
-# relative frequencies of the augmentation types
-BLUR_INDEX = 0      # so FREQS[0] is relative frequency of blur
+# indexes of augmentation types
+BLUR_INDEX = 0      # so self.probs[0] refers to blur
 FADE_INDEX = 1
 WHITE_NOISE_INDEX = 2
 PINK_NOISE_INDEX = 3
@@ -30,21 +30,21 @@ SHIFT_INDEX = 5
 SPECKLE_INDEX = 6
 
 class DataGenerator():
-    def __init__(self, db, x_train, y_train, train_class, seed=None, augmentation=True, binary_classifier=False, multilabel=False):
+    def __init__(self, db, x_train, y_train, train_class, seed=None, augmentation=True, low_noise_detector=False, multilabel=False):
         self.audio = audio.Audio()
         self.x_train = x_train
         self.y_train = y_train
         self.train_class = train_class
         self.seed = seed
         self.augmentation = augmentation
-        self.binary_classifier = binary_classifier
+        self.low_noise_detector = low_noise_detector
         self.multilabel = multilabel
-        
-        if binary_classifier:
-            self.spec_height = constants.BINARY_SPEC_HEIGHT
+
+        if low_noise_detector:
+            self.spec_height = cfg.low_noise_spec_height
             freqs = np.array([0.25, 0.5, 0, 0, 0, 0.5, 0.9]) # don't add noise for binary classifier
         else:
-            self.spec_height = constants.SPEC_HEIGHT
+            self.spec_height = cfg.spec_height
             freqs = np.array([0.25, 0.5, 1.0, 1.0, 0.5, 0.5, 0.9])
 
         self.indices = np.arange(y_train.shape[0])
@@ -57,24 +57,24 @@ class DataGenerator():
             for i in range(1, SPECKLE_INDEX + 1):
                 self.probs[i] = self.probs[i - 1] + probs[i]
 
-            if not binary_classifier:
+            if not low_noise_detector:
                 # create some white noise
-                self.white_noise = np.zeros((CACHE_LEN, self.spec_height, constants.SPEC_WIDTH, 1))
+                self.white_noise = np.zeros((CACHE_LEN, self.spec_height, cfg.spec_width, 1))
                 for i in range(CACHE_LEN):
                     self.white_noise[i] = skimage.util.random_noise(self.white_noise[i], mode='gaussian', seed=self.seed, var=NOISE_VARIANCE, clip=True)
 
                 # create some pink noise
-                self.pink_noise = np.zeros((CACHE_LEN, self.spec_height, constants.SPEC_WIDTH, 1))
+                self.pink_noise = np.zeros((CACHE_LEN, self.spec_height, cfg.spec_width, 1))
                 for i in range(CACHE_LEN):
                     self.pink_noise[i] = self.audio.pink_noise() + self.white_noise[i]
 
                 # get some noise spectrograms from the database
                 results = db.get_spectrograms_by_name('Denoiser')
-                self.real_noise = np.zeros((len(results), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+                self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
                 for i in range(len(self.real_noise)):
                     self.real_noise[i] = util.expand_spectrogram(results[i][0])
 
-            self.speckle = np.zeros((CACHE_LEN, self.spec_height, constants.SPEC_WIDTH, 1))
+            self.speckle = np.zeros((CACHE_LEN, self.spec_height, cfg.spec_width, 1))
             for i in range(CACHE_LEN):
                 self.speckle[i] = skimage.util.random_noise(self.speckle[i], mode='gaussian', seed=self.seed, var=SPECKLE_VARIANCE, clip=True)
 
@@ -82,10 +82,10 @@ class DataGenerator():
     def __call__(self):
         np.random.shuffle(self.indices)
         for i, id in enumerate(self.indices):
-            spec = util.expand_spectrogram(self.x_train[id], binary_classifier=self.binary_classifier)
+            spec = util.expand_spectrogram(self.x_train[id], low_noise_detector=self.low_noise_detector)
             label = self.y_train[id].astype(np.float32)
-            
-            if self.augmentation and self.multilabel and not self.binary_classifier and self.train_class[id] != 'Noise':
+
+            if self.augmentation and self.multilabel and not self.low_noise_detector and self.train_class[id] != 'Noise':
                 prob = random.uniform(0, 1)
 
                 if prob < PROB_MERGE:
@@ -113,7 +113,7 @@ class DataGenerator():
                         spec = self._speckle(spec)
 
             yield (spec.astype(np.float32), label)
-    
+
     # pick a random spectrogram and merge it with the given one
     def merge_specs(self, spec, label, class_name):
         index = random.randint(0, len(self.indices) - 1)
@@ -158,7 +158,7 @@ class DataGenerator():
     # blur the spectrogram (larger values of sigma lead to more blurring)
     def _blur(self, spec, min_sigma=0.1, max_sigma=1.0):
         sigma = random.uniform(min_sigma, max_sigma)
-        spec = skimage.filters.gaussian(spec, sigma=sigma, multichannel=False)
+        spec = skimage.filters.gaussian(spec, sigma=sigma)
 
         # renormalize to [0, 1]
         max = spec.max()
@@ -166,7 +166,7 @@ class DataGenerator():
             spec = spec / max
 
         return spec
-        
+
     # fade the spectrogram (smaller factors and larger min_vals lead to more fading);
     # defaults don't have a big visible effect but do fade values a little, and it's
     # important to preserve very faint spectrograms
@@ -177,7 +177,7 @@ class DataGenerator():
         spec *= 1/factor # rescale so max = 1
         spec = np.clip(spec, 0, 1) # just to be safe
         return spec
-                
+
     # perform a random horizontal shift of the spectrogram
     def _shift_horizontal(self, spec):
         # detect left-shifted spectrograms, so we don't shift further left
@@ -187,9 +187,9 @@ class DataGenerator():
             max_shift_left = 0
         else:
             max_shift_left = MAX_SHIFT
-        
+
         # detect right-shifted spectrograms, so we don't shift further right
-        right_part = spec[:self.spec_height, constants.SPEC_WIDTH - 10:]
+        right_part = spec[:self.spec_height, cfg.spec_width - 10:]
         num_pixels = (right_part > 0.05).sum()
         if num_pixels > 300:
             max_shift_right = 0
@@ -198,7 +198,7 @@ class DataGenerator():
 
         if max_shift_left == 0 and max_shift_right == 0:
             return spec
-        
+
         pixels = random.randint(-max_shift_left, max_shift_right)
         spec = np.roll(spec, shift=pixels, axis=1)
         return spec
