@@ -9,9 +9,8 @@ import sys
 # this is necessary before importing from a peer directory
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
-sys.path.insert(0, parentdir) 
+sys.path.insert(0, parentdir)
 
-from core import constants
 from core import database
 from core import util
 
@@ -61,9 +60,8 @@ sep = os.path.sep
 for base_name in input_dir_list:
     if base_name not in db_dict.keys():
         if len(output_dir) > 0:
-            cmd = f'move "{input_dir}{sep}{base_to_file_dict[base_name]}" "{output_dir}{sep}{base_to_file_dict[base_name]}"'
+            cmd = f'mv "{input_dir}{sep}{base_to_file_dict[base_name]}" "{output_dir}{sep}{base_to_file_dict[base_name]}"'
             print(cmd)
             os.system(cmd)
         else:
             print(base_name)
-       
