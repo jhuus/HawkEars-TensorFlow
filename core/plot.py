@@ -6,18 +6,18 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from core import constants
-    
+from core import config as cfg
+
 # save a plot of a spectrogram
-def plot_spec(spec, path, binary_classifier=False, gray_scale=False):
+def plot_spec(spec, path, low_noise_detector=False, gray_scale=False):
     if spec.ndim == 3:
-        if binary_classifier:
-            spec = spec.reshape((constants.BINARY_SPEC_HEIGHT, constants.SPEC_WIDTH))
+        if low_noise_detector:
+            spec = spec.reshape((cfg.low_noise_spec_height, cfg.spec_width))
         else:
-            spec = spec.reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH))
+            spec = spec.reshape((cfg.spec_height, cfg.spec_width))
 
     plt.clf() # clear any existing plot data
-    
+
     if gray_scale:
         spec = np.flipud(spec)
         spec = cv2.resize(spec, dsize=(384, 160), interpolation=cv2.INTER_CUBIC) # make it taller so it's easier to view
