@@ -1,6 +1,5 @@
 # SQLite database interface for audio recordings.
 
-import sys
 import sqlite3
 
 class Database:
@@ -11,12 +10,12 @@ class Database:
             self._create_tables()
         except sqlite3.Error as e:
             print(f'Error in database init: {e}')
-            
+
     # create tables if they don't exist
     def _create_tables(self):
         try:
             cursor = self.conn.cursor()
-            
+
             # Record per data source, e.g. Xeno-Canto
             query = '''
                 CREATE TABLE IF NOT EXISTS Source (
@@ -33,7 +32,7 @@ class Database:
             '''
             cursor.execute(query)
 
-            # Record per subcategory, which is species where relevant, but not for 
+            # Record per subcategory, which is species where relevant, but not for
             # "machine" sounds such as sirens and train whistles
             query = '''
                 CREATE TABLE IF NOT EXISTS Subcategory (
@@ -87,27 +86,27 @@ class Database:
                     Type TEXT)
             '''
             cursor.execute(query)
-            
+
             # Create indexes for efficiency
             query = 'CREATE UNIQUE INDEX IF NOT EXISTS idx_subcategory_name ON Subcategory (Name)'
             cursor.execute(query)
-            
+
             query = 'CREATE INDEX IF NOT EXISTS idx_recording_subcategoryid ON Recording (SubcategoryID)'
             cursor.execute(query)
-            
+
             query = 'CREATE INDEX IF NOT EXISTS idx_spectrogram_recordingid ON Spectrogram (RecordingID)'
             cursor.execute(query)
 
             self.conn.commit()
         except sqlite3.Error as e:
             print(f'Error in database _create_tables: {e}')
-        
+
     def close(self):
         try:
-            self.conn.close()        
+            self.conn.close()
         except sqlite3.Error as e:
             print(f'Error in database close: {e}')
-        
+
     def delete_recording(self, subcategory_name):
         try:
             query = f'''
@@ -118,7 +117,7 @@ class Database:
             self.conn.commit()
         except sqlite3.Error as e:
             print(f'Error in database delete_recording: {e}')
-        
+
     def delete_recording_by_id(self, id):
         try:
             query = f'''
@@ -129,7 +128,7 @@ class Database:
             self.conn.commit()
         except sqlite3.Error as e:
             print(f'Error in database delete_recording_by_id: {e}')
-        
+
     def delete_spectrogram(self, subcategory_name):
         try:
             query = f'''
@@ -140,7 +139,7 @@ class Database:
             self.conn.commit()
         except sqlite3.Error as e:
             print(f'Error in database delete_spectrogram: {e}')
-        
+
     def delete_spectrogram_by_id(self, id):
         try:
             query = f'''
@@ -151,7 +150,7 @@ class Database:
             self.conn.commit()
         except sqlite3.Error as e:
             print(f'Error in database delete_spectrogram_by_id: {e}')
-        
+
     def delete_spectrogram_by_recording_id(self, recording_id):
         try:
             query = f'''
@@ -162,7 +161,7 @@ class Database:
             self.conn.commit()
         except sqlite3.Error as e:
             print(f'Error in database delete_spectrogram_by_recording_id: {e}')
-        
+
     def delete_subcategory(self, subcategory_name):
         try:
             query = f'''
@@ -183,7 +182,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_all_categories: {e}')
 
@@ -197,9 +196,9 @@ class Database:
             result = cursor.fetchone()
             if result != None:
                 return result[0]
-                
+
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_category_by_id: {e}')
 
@@ -213,19 +212,19 @@ class Database:
             result = cursor.fetchone()
             if result != None:
                 return result[0]
-                
+
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_category_by_name: {e}')
-            
+
     def get_num_spectrograms(self, subcategory_name):
         try:
             query = f'''
                 SELECT COUNT(*)
                 FROM Spectrogram
                 WHERE RecordingID in
-                    (SELECT ID From Recording WHERE SubcategoryID = 
+                    (SELECT ID From Recording WHERE SubcategoryID =
                         (SELECT ID FROM Subcategory WHERE NAME = "{subcategory_name}"))
             '''
             cursor = self.conn.cursor()
@@ -234,7 +233,7 @@ class Database:
             if result != None:
                 return result[0]
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_num_spectrograms: {e}')
 
@@ -247,15 +246,15 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_all_recordings: {e}')
-            
+
     def get_recording(self, id):
         try:
             query = f'''
-                SELECT SourceID, SubcategoryID, URL, FileName, Seconds, Recorder, License, 
-                    Quality, Latitude, Longitude, SoundType, Time, Date, Remark, WasItSeen 
+                SELECT SourceID, SubcategoryID, URL, FileName, Seconds, Recorder, License,
+                    Quality, Latitude, Longitude, SoundType, Time, Date, Remark, WasItSeen
                 FROM Recording
                 WHERE ID = "{id}"
             '''
@@ -263,15 +262,15 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchone()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_recording: {e}')
 
     def get_recordings(self, source_id, subcategory_id):
         try:
             query = f'''
-                SELECT ID, SourceID, SubcategoryID, URL, FileName, Seconds, Recorder, License, 
-                    Quality, Latitude, Longitude, SoundType, Time, Date, Remark, WasItSeen 
+                SELECT ID, SourceID, SubcategoryID, URL, FileName, Seconds, Recorder, License,
+                    Quality, Latitude, Longitude, SoundType, Time, Date, Remark, WasItSeen
                 FROM Recording
                 WHERE SourceID = "{source_id}" AND SubcategoryID = "{subcategory_id}"
                 ORDER BY ID
@@ -280,15 +279,15 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_recordings: {e}')
 
     def get_recordings_by_source(self, source_id):
         try:
             query = f'''
-                SELECT ID, SourceID, SubcategoryID, URL, FileName, Seconds, Recorder, License, 
-                    Quality, Latitude, Longitude, SoundType, Time, Date, Remark, WasItSeen 
+                SELECT ID, SourceID, SubcategoryID, URL, FileName, Seconds, Recorder, License,
+                    Quality, Latitude, Longitude, SoundType, Time, Date, Remark, WasItSeen
                 FROM Recording
                 WHERE SourceID = "{source_id}"
                 ORDER BY ID
@@ -297,14 +296,14 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_recordings: {e}')
 
     def get_recordings_by_subcategory_name(self, subcategory_name):
         try:
             query = f'''
-                SELECT ID, FileName, Seconds 
+                SELECT ID, FileName, Seconds
                 FROM Recording
                 WHERE SubcategoryID = (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}")
                 ORDER BY ID
@@ -313,14 +312,14 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_recordings_by_subcategory_name: {e}')
 
     def get_recording_id(self, source_id, subcategory_id, filename):
         try:
             query = f'''
-                SELECT ID 
+                SELECT ID
                 FROM Recording
                 WHERE SourceID = "{source_id}" AND SubcategoryID = "{subcategory_id}" AND FileName = "{filename}"
             '''
@@ -330,14 +329,14 @@ class Database:
             if result != None:
                 return result[0]
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_recording_id: {e}')
 
     def get_recording_ids(self, subcategory_id):
         try:
             query = f'''
-                SELECT ID 
+                SELECT ID
                 FROM Recording
                 WHERE SubcategoryID = "{subcategory_id}"
                 ORDER BY ID
@@ -346,7 +345,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_recording_ids: {e}')
 
@@ -359,7 +358,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_all_spectrograms: {e}')
 
@@ -371,20 +370,52 @@ class Database:
                 AND Offset > {offset - .01}
                 AND Offset < {offset + .01}
             '''
-            
+
             cursor = self.conn.cursor()
             cursor.execute(query)
             result = cursor.fetchone()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_spectrogram_id: {e}')
+
+    def get_spectrogram_count_by_recid(self, recording_id):
+        try:
+            query = f'''
+                SELECT COUNT(*) FROM Spectrogram
+                WHERE RecordingID = {recording_id}
+            '''
+
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            result = cursor.fetchone()
+            return result[0]
+
+        except sqlite3.Error as e:
+            print(f'Error in database get_spectrogram_count_by_recid: {e}')
+
+    def get_spectrogram_count_by_subcat(self, subcategory_name):
+        try:
+            query = f'''
+                SELECT COUNT(*) FROM Spectrogram
+                WHERE RecordingID IN
+                    (SELECT ID FROM Recording WHERE SubcategoryID IN
+                        (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}"))
+            '''
+
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            result = cursor.fetchone()
+            return result[0]
+
+        except sqlite3.Error as e:
+            print(f'Error in database get_spectrogram_count_by_subcat: {e}')
 
     def get_spectrograms_by_name(self, subcategory_name):
         try:
             query = f'''
                 SELECT Value FROM Spectrogram
-                WHERE RecordingID IN 
+                WHERE RecordingID IN
                     (SELECT ID FROM Recording WHERE SubcategoryID IN
                         (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}"))
                 ORDER BY ID
@@ -393,7 +424,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_spectrograms_by_name: {e}')
 
@@ -408,7 +439,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_spectrograms_by_recording_id: {e}')
 
@@ -423,7 +454,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_spectrograms_by_recording_id: {e}')
 
@@ -438,7 +469,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_spectrograms_by_recording_id2: {e}')
 
@@ -447,7 +478,7 @@ class Database:
             query = f'''
                 SELECT Recording.FileName, Offset, Value, Encoding FROM Spectrogram
                 INNER JOIN Recording ON RecordingID = Recording.ID
-                WHERE RecordingID IN 
+                WHERE RecordingID IN
                     (SELECT ID FROM Recording WHERE SubcategoryID IN
                         (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}"))
                 ORDER BY Recording.FileName, Offset
@@ -456,7 +487,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_spectrogram_details_by_name: {e}')
 
@@ -465,7 +496,7 @@ class Database:
             query = f'''
                 SELECT Spectrogram.ID, Recording.ID, Value, Offset FROM Spectrogram
                 INNER JOIN Recording ON RecordingID = Recording.ID
-                WHERE RecordingID IN 
+                WHERE RecordingID IN
                     (SELECT ID FROM Recording WHERE SubcategoryID IN
                         (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}"))
                 ORDER BY Recording.FileName, Offset
@@ -474,7 +505,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_spectrogram_details_by_name: {e}')
 
@@ -490,7 +521,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_spectrogram_summaries: {e}')
 
@@ -504,9 +535,9 @@ class Database:
             result = cursor.fetchone()
             if result != None:
                 return result[0]
-                
+
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_source_by_name: {e}')
 
@@ -520,9 +551,9 @@ class Database:
             result = cursor.fetchone()
             if result != None:
                 return result[0]
-                
+
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_source_by_name: {e}')
 
@@ -535,7 +566,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_source_by_name: {e}')
 
@@ -548,7 +579,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchone()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_subcategory: {e}')
 
@@ -561,7 +592,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchone()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_subcategory_by_code: {e}')
 
@@ -574,7 +605,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchone()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_subcategory_by_name: {e}')
 
@@ -587,7 +618,7 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchone()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_subcategory_by_name: {e}')
 
@@ -600,10 +631,10 @@ class Database:
             cursor.execute(query)
             result = cursor.fetchall()
             return result
-            
+
         except sqlite3.Error as e:
             print(f'Error in database get_all_subcategories: {e}')
-        
+
     def insert_category(self, name):
         try:
             query = '''
@@ -615,7 +646,7 @@ class Database:
             return cursor.lastrowid
         except sqlite3.Error as e:
             print(f'Error in database insert_category: {e}')
-        
+
     def insert_recording(self, source_id, subcategory_id, url, filename, seconds = 0, recorder = "", license = "",
                          quality = "", latitude = "", longitude = "", sound_type = "", time = "", date = "", remark = "",
                          was_it_seen = ""):
@@ -632,7 +663,7 @@ class Database:
             return cursor.lastrowid
         except sqlite3.Error as e:
             print(f'Error in database insert_recording: {e}')
-        
+
     def insert_spectrogram(self, recording_id, value, offset, encoding=None, type=''):
         try:
             if encoding is None:
@@ -666,7 +697,7 @@ class Database:
             return cursor.lastrowid
         except sqlite3.Error as e:
             print(f'Error in database insert_source: {e}')
-            
+
     def insert_subcategory(self, category_id, name, synonym='', code = ''):
         try:
             query = '''
@@ -678,7 +709,7 @@ class Database:
             return cursor.lastrowid
         except sqlite3.Error as e:
             print(f'Error in database insert_subcategory: {e}')
-            
+
     def update_recording_source_id(self, id, new_source_id):
         try:
             query = '''
@@ -704,7 +735,7 @@ class Database:
             return cursor.lastrowid
         except sqlite3.Error as e:
             print(f'Error in database update_spectrogram_encoding: {e}')
-            
+
     def update_spectrogram_recording_id(self, id, new_recording_id):
         try:
             query = '''
