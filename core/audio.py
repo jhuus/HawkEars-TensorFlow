@@ -10,21 +10,22 @@ import numpy as np
 import scipy
 import scipy.signal
 
-from . import binary_classifier
-from core import constants
+from . import low_noise_detector
+from core import config as cfg
 
 class Audio:
     def __init__(self, path_prefix=''):
         self.cache = {}
         self.have_signal = False
-        self.binary_classifier = binary_classifier.BinaryClassifier(path_prefix)
+        self.low_noise_detector = low_noise_detector.LowNoiseDetector(path_prefix)
 
     def _apply_bandpass_filter(self, sig):
-        wn = np.array([constants.FMIN, constants.FMAX]) / (constants.SAMPLING_RATE / 2.0)
+        min_freq = max(cfg.min_freq, 1) # 0 is not valid minimum for bandpass filter
+        wn = np.array([min_freq, cfg.max_freq]) / (cfg.sampling_rate / 2.0)
         order = 4
         filter_sos = scipy.signal.butter(order, wn, btype='bandpass', output='sos')
         return scipy.signal.sosfiltfilt(filter_sos, sig)
-        
+
     def _get_mel_filterbanks(self, num_banks, f_vec, dtype=np.float32):
         '''
         An arguably better version of librosa's melfilterbanks wherein issues with "hard snapping" are avoided. Works with
@@ -33,15 +34,15 @@ class Audio:
         '''
 
         # filterbank already in cache?
-        fname = 'mel_' + str(num_banks) + '_' + str(constants.FMIN) + '_' + str(constants.FMAX)
+        fname = 'mel_' + str(num_banks) + '_' + str(cfg.min_freq) + '_' + str(cfg.max_freq)
         if not fname in self.cache:
-            
+
             # break frequency and scaling factor (smaller f_break values increase the scaling effect)
             A = 4581.0
             f_break = 1625.0
 
             # convert Hz to mel
-            freq_extents_mel = A * np.log10(1 + np.asarray([constants.FMIN, constants.FMAX], dtype=dtype) / f_break)
+            freq_extents_mel = A * np.log10(1 + np.asarray([cfg.min_freq, cfg.max_freq], dtype=dtype) / f_break)
 
             # compute points evenly spaced in mels
             melpoints = np.linspace(freq_extents_mel[0], freq_extents_mel[1], num_banks + 2, dtype=dtype)
@@ -71,29 +72,25 @@ class Audio:
         return self.cache[fname][0], self.cache[fname][1]
 
     def _get_raw_spectrogram(self, signal, shape):
-        # compute overlap
-        hop_len = int(len(signal) / (shape[1] - 1)) 
-        n_fft = constants.WIN_LEN
-
         # ensure output width is 384 (or 385 if can't get 384)
         overlap_hash = {256: -87, 512: 168, 768: 426, 1024: 683, 1576: 1236, 2048: 1709, 4096: 3763}
-        win_overlap = overlap_hash[constants.WIN_LEN]
+        win_overlap = overlap_hash[cfg.n_fft]
 
         f, t, spec = scipy.signal.spectrogram(signal,
-                                            fs=constants.SAMPLING_RATE,
-                                            window=scipy.signal.windows.hann(constants.WIN_LEN),
-                                            nperseg=constants.WIN_LEN,
+                                            fs=cfg.sampling_rate,
+                                            window=scipy.signal.windows.hann(cfg.n_fft),
+                                            nperseg=cfg.n_fft,
                                             noverlap=win_overlap,
-                                            nfft=n_fft,
+                                            nfft=cfg.n_fft,
                                             detrend=False,
                                             mode='magnitude')
 
         # determine the indices of where to clip the spec
-        valid_f_idx_start = f.searchsorted(constants.FMIN, side='left')
-        valid_f_idx_end = f.searchsorted(constants.FMAX, side='right') - 1
+        valid_f_idx_start = f.searchsorted(cfg.min_freq, side='left')
+        valid_f_idx_end = f.searchsorted(cfg.max_freq, side='right') - 1
 
         spec = np.transpose(spec[valid_f_idx_start:(valid_f_idx_end + 1), :], [1, 0])
-        
+
         # get mel filter banks
         mel_filterbank, mel_f = self._get_mel_filterbanks(shape[0], f, dtype=spec.dtype)
 
@@ -103,17 +100,17 @@ class Audio:
         # clip the spec representation and apply the mel filterbank;
         # due to the nature of np.dot(), the spec needs to be transposed prior, and reverted after
         spec = np.dot(spec, mel_filterbank)
-        spec = np.transpose(spec, [1, 0]) 
+        spec = np.transpose(spec, [1, 0])
         spec = spec[:shape[0], :shape[1]]
-        
+
         if spec.shape[1] == shape[1] - 1:
             # I don't know why this happens occasionally, but fix it here
             temp = spec
             spec = np.zeros((shape[0], shape[1]))
             spec[:,:-1] = temp
-        
+
         return spec
-        
+
     # look for a sound in the given frequency (height) range, in the first segment of the spec;
     # if found, return the starting offset in seconds
     def _find_sound(self, spec, sound_factor, min_height, max_height):
@@ -135,32 +132,32 @@ class Audio:
                     first_sound_sample = sample_offset
                     found = True
 
-        if found and first_sound_sample < constants.SPEC_WIDTH:
+        if found and first_sound_sample < cfg.spec_width:
             # we found sound in the first segment, so try to center it;
             # scan backwards from end of potential segment until non-silence
             curr_offset = first_sound_sample
-            end_offset = min(curr_offset + constants.SPEC_WIDTH - 1, spec.shape[0] - 1)
-            
+            end_offset = min(curr_offset + cfg.spec_width - 1, spec.shape[0] - 1)
+
             while sound[end_offset] == 0:
                 end_offset -= 1
 
             # determine padding and back up from curr_offset to center the sound
             sound_len = end_offset - curr_offset + 1
-            total_pad_len = constants.SPEC_WIDTH - sound_len
+            total_pad_len = cfg.spec_width - sound_len
             initial_pad_len = min(int(total_pad_len / 2), curr_offset)
             start_offset = curr_offset - initial_pad_len
             return True, start_offset
-            
+
         else:
             return False, 0
-    
-        
+
+
     # find sounds in audio, using a simple heuristic approach;
     # return array of floats representing offsets in seconds where significant sounds begin;
     # when analyzing an audio file, the only goal is to minimize splitting of bird sounds,
     # since sound fragments are often misidentified;
-    # when extracting data for training we also want to discard intervals that don't seem 
-    # to have significant sounds in them, but in analysis it's better to let the neural net 
+    # when extracting data for training we also want to discard intervals that don't seem
+    # to have significant sounds in them, but in analysis it's better to let the neural net
     # decide if a spectrogram contains a bird sound or not
     def find_sounds(self, signal=None, sound_factor=1.15, keep_empty=True):
         if signal is None:
@@ -169,53 +166,53 @@ class Audio:
             else:
                 return []
 
-        num_seconds = signal.shape[0] / constants.SAMPLING_RATE
-        samples_per_sec = constants.SPEC_WIDTH / constants.SEGMENT_LEN
-        freq_cutoff = int(constants.SPEC_HEIGHT / 4) # dividing line between "low" and "high" frequencies
-        
+        num_seconds = signal.shape[0] / cfg.sampling_rate
+        samples_per_sec = cfg.spec_width / cfg.segment_len
+        freq_cutoff = int(cfg.spec_height / 4) # dividing line between "low" and "high" frequencies
+
         # process in chunks, where each is as wide as two spectrograms
         curr_start = 0
         offsets = []
-        while curr_start <= num_seconds - constants.SEGMENT_LEN:
-            curr_end = min(curr_start + 2 * constants.SEGMENT_LEN, num_seconds)
-            segment = signal[int(curr_start * constants.SAMPLING_RATE):int(curr_end * constants.SAMPLING_RATE)]
-            shape=(constants.SPEC_HEIGHT, int(constants.SPEC_WIDTH * ((curr_end - curr_start) / constants.SEGMENT_LEN)))
+        while curr_start <= num_seconds - cfg.segment_len:
+            curr_end = min(curr_start + 2 * cfg.segment_len, num_seconds)
+            segment = signal[int(curr_start * cfg.sampling_rate):int(curr_end * cfg.sampling_rate)]
+            shape=(cfg.spec_height, int(cfg.spec_width * ((curr_end - curr_start) / cfg.segment_len)))
             spec = self._get_raw_spectrogram(segment, shape)
 
             # look for a sound in top 3/4 of frequency range
-            found, sound_start = self._find_sound(spec, sound_factor, freq_cutoff, constants.SPEC_HEIGHT)
+            found, sound_start = self._find_sound(spec, sound_factor, freq_cutoff, cfg.spec_height)
             sound_start /= samples_per_sec # convert from samples to seconds
-            
+
             if found:
                 offsets.append(curr_start + sound_start)
-                curr_start += sound_start + constants.SEGMENT_LEN
+                curr_start += sound_start + cfg.segment_len
             elif keep_empty:
                 offsets.append(curr_start)
-                curr_start += constants.SEGMENT_LEN
+                curr_start += cfg.segment_len
             else:
                 # look for a sound in bottom 1/4 of frequency range
                 found, sound_start = self._find_sound(spec, sound_factor, 0, freq_cutoff)
                 sound_start /= samples_per_sec # convert from samples to seconds
                 if found:
                     offsets.append(curr_start + sound_start)
-                    curr_start += sound_start + constants.SEGMENT_LEN
+                    curr_start += sound_start + cfg.segment_len
                 else:
-                    curr_start += constants.SEGMENT_LEN
-                
+                    curr_start += cfg.segment_len
+
         return offsets
 
     # return a pink noise spectrogram with values in range [0, 1]
     def pink_noise(self):
         beta = random.uniform(1.2, 1.6)
-        samples = constants.SEGMENT_LEN * constants.SAMPLING_RATE
+        samples = cfg.segment_len * cfg.sampling_rate
         segment = cn.powerlaw_psd_gaussian(beta, samples)
-        shape = (constants.SPEC_HEIGHT, constants.SPEC_WIDTH)
+        shape = (cfg.spec_height, cfg.spec_width)
         spec = self._get_raw_spectrogram(segment, shape)
         spec = spec / spec.max() # normalize to [0, 1]
-        return spec.reshape((constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+        return spec.reshape((cfg.spec_height, cfg.spec_width, 1))
 
     def dampen_low_noise(self, specs, low_idx=5, high_idx=15, low_mult=2.0):
-        is_noise, high_max = self.binary_classifier.check_for_noise(specs, low_idx, high_idx, low_mult)
+        is_noise, high_max = self.low_noise_detector.check_for_noise(specs, low_idx, high_idx, low_mult)
 
         for i in range(len(specs)):
             if is_noise[i]:
@@ -242,44 +239,47 @@ class Audio:
 
     # return list of spectrograms for the given offsets (i.e. starting points in seconds);
     # you have to call load() before calling this
-    def get_spectrograms(self, offsets, shape=(constants.SPEC_HEIGHT, constants.SPEC_WIDTH), seconds=constants.SEGMENT_LEN, binary_classifier=False,
-                         check_noise=True, update_levels=True, low_idx=5, high_idx=15, low_mult=2.0, exponent=0.8, min_val=0, row_factor=0.8):
+    def get_spectrograms(self, offsets, shape=(cfg.spec_height, cfg.spec_width), seconds=cfg.segment_len, low_noise_detector=False,
+                         check_noise=True, reduce_noise=True, low_idx=5, high_idx=15, low_mult=2.0, exponent=0.8, min_val=0, row_factor=0.8, multi_spec=False):
         if not self.have_signal:
             return None
 
-        last_offset = (len(self.signal) / constants.SAMPLING_RATE) - constants.SEGMENT_LEN
+        last_offset = (len(self.signal) / cfg.sampling_rate) - cfg.segment_len
         specs = []
         for offset in offsets:
             if offset > last_offset:
                 # not enough time for this offset, so pad it
-                self.signal = np.pad(self.signal, (0, constants.SEGMENT_LEN * constants.SAMPLING_RATE), 'constant', constant_values=(0, 0))
-                
-            segment = self.signal[int(offset*constants.SAMPLING_RATE):int((offset+seconds)*constants.SAMPLING_RATE)]
+                self.signal = np.pad(self.signal, (0, cfg.segment_len * cfg.sampling_rate), 'constant', constant_values=(0, 0))
+
+            segment = self.signal[int(offset*cfg.sampling_rate):int((offset+seconds)*cfg.sampling_rate)]
             specs.append(self._get_raw_spectrogram(segment, shape))
 
-        if binary_classifier:
+        if low_noise_detector:
             for i in range(len(specs)):
                 # return only the lowest frequencies for binary classifier spectrograms
-                specs[i] = specs[i][:constants.BINARY_SPEC_HEIGHT, :]
+                specs[i] = specs[i][:cfg.low_noise_spec_height, :]
         else:
             if check_noise:
                 self.dampen_low_noise(specs, low_idx, high_idx, low_mult)
-            
-            if update_levels:
+
+            if reduce_noise:
                 self.update_levels(specs, exponent, row_factor)
 
-        if update_levels:
+        if reduce_noise:
             for i in range(len(specs)):
                 # normalize values between 0 and 1
                 max = specs[i].max()
                 if max > 0:
                     specs[i] /= max
-                    
+
                 specs[i] = specs[i].clip(min_val, 1)
 
         logging.info('Done creating spectrograms')
         return specs
-        
+
+    def signal_len(self):
+        return len(self.signal) if self.have_signal else 0
+
     def load(self, path, filter=True):
         try:
             # on some systems librosa calls audioread which calls gstreamer, which
@@ -287,7 +287,7 @@ class Audio:
             # also ffmpeg issues fewer warnings and loads significantly faster
             bytes, _ = (ffmpeg
                 .input(path)
-                .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{constants.SAMPLING_RATE}')
+                .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{cfg.sampling_rate}')
                 .overwrite_output()
                 .run(capture_stdout=True, capture_stderr=True, quiet=True))
 
@@ -297,7 +297,7 @@ class Audio:
             floats = scale * np.frombuffer(bytes, fmt).astype(np.float32)
             signal = np.asarray(floats)
             self.have_signal = True
-            
+
             if filter:
                 self.signal = self._apply_bandpass_filter(signal)
             else:
@@ -314,4 +314,4 @@ class Audio:
 
 
         logging.info('Done loading audio file')
-        return self.signal, constants.SAMPLING_RATE
+        return self.signal, cfg.sampling_rate
