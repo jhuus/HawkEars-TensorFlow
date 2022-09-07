@@ -12,10 +12,10 @@ import scipy
 # this is necessary before importing from a peer directory
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
-sys.path.insert(0, parentdir) 
+sys.path.insert(0, parentdir)
 
 from core import audio
-from core import constants
+from core import config as cfg
 from core import util
 
 # command-line arguments
@@ -40,18 +40,17 @@ for file_name in os.listdir(root_dir):
             continue
 
         if audio_obj is None:
-            audio_obj = audio.Audio(path_prefix='../')        
-    
+            audio_obj = audio.Audio(path_prefix='../')
+
         print(f'processing {file_path}')
         signal, rate = audio_obj.load(file_path)
         if signal is None:
             continue
-        
+
         spec_len = int(min(max_spec_len, signal.shape[0] / rate))
-        width = int(spec_len * (constants.SPEC_WIDTH / constants.SEGMENT_LEN))
-        if width < constants.SPEC_WIDTH:
+        width = int(spec_len * (cfg.spec_width / cfg.segment_len.SEGMENT_LEN))
+        if width < cfg.spec_width:
             continue
-        
-        specs = audio_obj.get_spectrograms([0], seconds=spec_len, shape=(constants.SPEC_HEIGHT, width), check_noise=False, exponent=0.4, row_factor=0)
+
+        specs = audio_obj.get_spectrograms([0], seconds=spec_len, shape=(cfg.spec_height, width), check_noise=False, exponent=0.4, row_factor=0)
         util.plot_spec(specs[0], image_path)
-       
