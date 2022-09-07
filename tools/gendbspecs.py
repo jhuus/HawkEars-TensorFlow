@@ -11,17 +11,15 @@ import matplotlib.pyplot as plt
 # this is necessary before importing from a peer directory
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
-sys.path.insert(0, parentdir) 
+sys.path.insert(0, parentdir)
 
-from core import audio
-from core import constants
 from core import database
 from core import plot
 from core import util
 
 # command-line arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('-b', type=int, default=0, help='1 = binary classifier. Default = 0.')
+parser.add_argument('-lnd', type=int, default=0, help='1 = low noise detector. Default = 0.')
 parser.add_argument('-f', type=str, default='training', help='Database name.')
 parser.add_argument('-c', type=int, default=0, help='1 = center the images.')
 parser.add_argument('-g', type=int, default=0, help='1 = use gray scale.')
@@ -33,7 +31,7 @@ parser.add_argument('-w', type=int, default=0, help='1 = overwrite existing imag
 
 args = parser.parse_args()
 
-binary_classifier = (args.b == 1)
+low_noise_detector = (args.lnd == 1)
 db_name = args.f
 species_name = args.s
 prefix = args.p.lower()
@@ -54,26 +52,27 @@ results = db.get_spectrogram_details_by_name(species_name)
 print(f'retrieved {len(results)} spectrograms from database')
 num_plotted = 0
 for result in results:
-    filename, offset, spec = result
+    filename, offset, spec, _ = result
     if len(prefix) > 0 and not filename.lower().startswith(prefix):
         continue
-    
+
     base, ext = os.path.splitext(filename)
     spec_path = f'{out_dir}/{base}-{offset:.2f}.png'
 
     if overwrite or not os.path.exists(spec_path):
-        spec = util.expand_spectrogram(spec, binary_classifier=binary_classifier)
+        print(f"Processing {spec_path}")
+        spec = util.expand_spectrogram(spec, low_noise_detector=low_noise_detector)
         if center:
             spec = util.center_spec(spec)
-        
+
         num_plotted += 1
-        plot.plot_spec(spec, spec_path, binary_classifier=binary_classifier, gray_scale=gray_scale)
-        
+        plot.plot_spec(spec, spec_path, low_noise_detector=low_noise_detector, gray_scale=gray_scale)
+
     if num_to_plot > 0 and num_plotted == num_to_plot:
         break
-    
+
 elapsed = time.time() - start_time
 minutes = int(elapsed) // 60
 seconds = int(elapsed) % 60
 print(f'Elapsed time to plot {num_plotted} spectrograms = {minutes}m {seconds}s\n')
-    
+
