@@ -1,10 +1,11 @@
-# Train an experimental denoiser.
+# Train a denoiser.
 
 import inspect
 import math
 import os
 import random
 import sys
+import time
 
 import colorednoise as cn
 import cv2
@@ -14,7 +15,7 @@ import tensorflow as tf
 from tensorflow import keras
 
 from core import audio
-from core import constants
+from core import config as cfg
 from core import database
 from core import plot
 from core import util
@@ -38,16 +39,16 @@ class DataGenerator():
 
         # get some noise spectrograms from the database
         results = db.get_spectrograms_by_name('Denoiser')
-        self.real_noise = np.zeros((len(results), constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+        self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
         for i in range(len(self.real_noise)):
             self.real_noise[i] = util.expand_spectrogram(results[i][0])
 
         # create some artificial noise
-        self.noise = np.zeros((CACHE_LEN, constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+        self.noise = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
         for i in range(CACHE_LEN):
             self.noise[i] = skimage.util.random_noise(self.noise[i], mode='gaussian', var=NOISE_VARIANCE, clip=True)
 
-        self.low_noise = np.zeros((CACHE_LEN, constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1))
+        self.low_noise = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
         for i in range(CACHE_LEN):
             self.low_noise[i] = self.audio.pink_noise() + self.noise[i]
 
@@ -62,7 +63,7 @@ class DataGenerator():
                 noisy_spec = self.add_real_noise(np.copy(spec))
 
             yield (noisy_spec.astype(np.float32), spec.astype(np.float32))
-    
+
     # add artificial low frequency noise to the spectrogram
     def add_low_noise(self, spec):
         index = random.randint(0, CACHE_LEN - 1)
@@ -71,11 +72,11 @@ class DataGenerator():
         spec /= np.max(spec)
         spec = spec.clip(0, 1)
         return spec
-    
+
     # add real noise to the spectrogram
     def add_real_noise(self, spec):
         index = random.randint(0, len(self.real_noise) - 1)
-        noise_mult = random.uniform(0.3, 0.85)
+        noise_mult = random.uniform(0.2, 0.7)
         spec += self.real_noise[index] * noise_mult
         spec /= np.max(spec)
         spec = spec.clip(0, 1)
@@ -106,15 +107,16 @@ def get_spectrograms(db, name):
     return filtered_specs
 
 # main entry point
+start_time = time.time()
+
 # define and compile the model
-#model = RIDNet()
-model = mirnet.mirnet_model()
+model = mirnet.mirnet_model(input_shape=[cfg.spec_height, cfg.spec_width, 1])
 opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
 model.compile(optimizer=opt, loss=keras.losses.MeanAbsoluteError())
 model.summary()
-    
+
 # create the training dataset
-classes = ["American Crow", "American Redstart", "Chipping Sparrow", "Common Loon", "Common Yellowthroat", 
+classes = ["American Crow", "American Redstart", "Chipping Sparrow", "Common Loon", "Common Yellowthroat",
            "Great Horned Owl", "Tufted Titmouse", "Yellow Warbler"]
 db = database.Database(filename="data/training.db")
 specs = []
@@ -130,9 +132,9 @@ for i in range(len(specs)):
 
 datagen = DataGenerator(db, x_train)
 train_ds = tf.data.Dataset.from_generator(
-    datagen, 
-    output_types=(tf.float16, tf.float16), 
-    output_shapes=([constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1],[constants.SPEC_HEIGHT, constants.SPEC_WIDTH, 1]))
+    datagen,
+    output_types=(tf.float16, tf.float16),
+    output_shapes=([cfg.spec_height, cfg.spec_width, 1],[cfg.spec_height, cfg.spec_width, 1]))
 train_ds = train_ds.batch(BATCH_SIZE)
 
 checkpoint_path = "data/denoiser"
@@ -140,3 +142,8 @@ cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, save_
 lr_scheduler = keras.callbacks.LearningRateScheduler(cos_lr_schedule)
 callbacks = [cp_callback, lr_scheduler]
 model.fit(train_ds, epochs=NUM_EPOCHS, validation_data=None, shuffle=True, callbacks=callbacks)
+
+elapsed = time.time() - start_time
+minutes = int(elapsed) // 60
+seconds = int(elapsed) % 60
+print(f'Elapsed time for training = {minutes}m {seconds}s\n')
