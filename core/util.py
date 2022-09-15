@@ -56,7 +56,7 @@ def expand_spectrogram(spec, low_noise_detector=False, reshape=True):
 
     if reshape:
         if low_noise_detector:
-            spec = spec.reshape(cfg.low_noise_spec_height, cfg.spec_width, 1)
+            spec = spec.reshape(cfg.lnd_spec_height, cfg.spec_width, 1)
         else:
             spec = spec.reshape(cfg.spec_height, cfg.spec_width, 1)
 
