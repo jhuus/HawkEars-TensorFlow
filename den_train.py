@@ -82,6 +82,16 @@ class DataGenerator():
         spec = spec.clip(0, 1)
         return spec
 
+# heuristic noise removal so clean spectrograms are extra clean;
+# for each frequency, subtract a multiple of the average amplitude
+def remove_noise(spec, row_factor=0.8):
+    if row_factor > 0:
+        num_freqs = spec.shape[0]
+        for i in range(num_freqs):
+            spec[i] -= row_factor * np.average(spec[i])
+
+    return spec
+
 # learning rate schedule with cosine decay
 def cos_lr_schedule(epoch):
     base_lr = BASE_LR * BATCH_SIZE / 64
@@ -94,6 +104,7 @@ def get_spectrograms(db, name):
     spec_list = []
     for spec in specs:
         curr = util.expand_spectrogram(spec[0])
+        curr = remove_noise(curr)
         spec_list.append((curr, len(curr[curr > 0.05])))
 
     sorted_specs = sorted(spec_list, key=lambda value: value[1])
@@ -103,7 +114,6 @@ def get_spectrograms(db, name):
     end = int(.75 * len(sorted_specs)) # trim 25% with the most pixels louder than the cutoff
     for i in range(start, end):
         filtered_specs.append(sorted_specs[i][0])
-
     return filtered_specs
 
 # main entry point
@@ -113,7 +123,6 @@ start_time = time.time()
 model = mirnet.mirnet_model(input_shape=[cfg.spec_height, cfg.spec_width, 1])
 opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
 model.compile(optimizer=opt, loss=keras.losses.MeanAbsoluteError())
-model.summary()
 
 # create the training dataset
 classes = ["American Crow", "American Redstart", "Chipping Sparrow", "Common Loon", "Common Yellowthroat",
