@@ -24,10 +24,10 @@ LENGTH_INCR = 100
 class LowNoiseDetector:
     def __init__(self, path_prefix):
         self.model = keras.models.load_model(f'{path_prefix}{cfg.low_noise_ckpt_path}', compile=False)
-        self.specs = np.zeros((LENGTH_INCR, cfg.low_noise_spec_height, cfg.spec_width, 1))
+        self.specs = np.zeros((LENGTH_INCR, cfg.lnd_spec_height, cfg.spec_width, 1))
 
     # return a list containing True if the corresponding spectrogram contains low frequency noise
-    def check_for_noise(self, specs, low_idx=30, high_idx=40, low_mult=2.0, min_confidence=0.7):
+    def check_for_noise(self, specs):
         # initialize return values
         ret_vals = [False for i in range(len(specs))]
         high_maxes = [0 for i in range(len(specs))]
@@ -39,10 +39,10 @@ class LowNoiseDetector:
             if spec is None:
                 continue
 
-            low_max = np.max(spec[:low_idx,:])
-            high_max = np.max(spec[high_idx:,:])
+            low_max = np.max(spec[:cfg.lnd_low_idx,:])
+            high_max = np.max(spec[cfg.lnd_high_idx:,:])
             high_maxes[i] = high_max
-            if high_max > 0 and low_max > low_mult * high_max:
+            if high_max > 0 and low_max > cfg.lnd_low_mult * high_max:
                 indexes.append(i)
 
         if len(indexes) == 0:
@@ -52,10 +52,10 @@ class LowNoiseDetector:
         # first grow the array if needed
         while len(indexes) > self.specs.shape[0]:
             old_len = self.specs.shape[0]
-            self.specs = np.zeros((old_len + LENGTH_INCR, cfg.low_noise_spec_height, cfg.spec_width, 1))
+            self.specs = np.zeros((old_len + LENGTH_INCR, cfg.lnd_spec_height, cfg.spec_width, 1))
 
         for i in range(len(indexes)):
-            self.specs[i, :, :, 0] = specs[indexes[i]][:cfg.low_noise_spec_height,:]
+            self.specs[i, :, :, 0] = specs[indexes[i]][:cfg.lnd_spec_height,:]
 
             # normalize values between 0 and 1
             max = self.specs[i].max()
@@ -67,7 +67,7 @@ class LowNoiseDetector:
         # update return values based on predictions
         for i in range(len(indexes)):
             # be sure before saying it's noise; if unsure, it's better to say no
-            if predictions[i][0] > min_confidence:
+            if predictions[i][0] > cfg.lnd_min_confidence:
                 ret_vals[indexes[i]] = True
 
         return ret_vals, high_maxes
