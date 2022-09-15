@@ -13,6 +13,7 @@ import time
 import zlib
 
 import numpy as np
+from tensorflow import keras
 
 # this is necessary before importing from a peer directory
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
@@ -40,14 +41,7 @@ def extract_spectrograms(recording, audio_object, subcategory, low_noise_detecto
 
             offsets.append(offset)
 
-        if subcategory == 'Noise':
-            check_noise = False
-            reduce_noise = False
-        else:
-            check_noise = True
-            reduce_noise = True
-
-        specs = audio_object.get_spectrograms(offsets, check_noise=check_noise, reduce_noise=reduce_noise, multi_spec=True, low_noise_detector=low_noise_detector)
+        specs = audio_object.get_spectrograms(offsets, low_noise_detector=low_noise_detector, multi_spec=True)
 
         for i in range(len(offsets)):
             if not specs[i] is None:
@@ -66,10 +60,11 @@ class Spectrogram:
         self.data = data
 
 class Main:
-    def __init__(self, mode, root1, root2, subcategory, prefix, offset, source_db, target_db, low_noise_detector, from3to4):
+    def __init__(self, mode, root1, root2, use_class_list, subcategory, prefix, offset, source_db, target_db, low_noise_detector, from3to4):
         self.mode = mode
         self.root1 = root1
         self.root2 = root2
+        self.use_class_list = (use_class_list == 1)
         self.subcategory = subcategory
         self.prefix = prefix.lower()
         self.offset = offset
@@ -163,7 +158,6 @@ class Main:
         logging.info(f'Extracting spectrograms for {self.subcategory}')
         spec = []
 
-        audio_object = audio.Audio(path_prefix='../')
         for recording in self.recordings:
             logging.info(f'Processing {recording.file_name}')
             if self.offset is None:
@@ -174,7 +168,7 @@ class Main:
             else:
                 recording.offsets = [self.offset]
 
-            extract_spectrograms(recording, audio_object, self.subcategory, self.low_noise_detector, self.from3to4)
+            extract_spectrograms(recording, self.audio, self.subcategory, self.low_noise_detector, self.from3to4)
 
         # insert spectrograms into the database
         logging.info(f'Inserting spectrograms for {self.subcategory}')
@@ -185,7 +179,12 @@ class Main:
     def run(self):
         start_time = time.time()
 
-        if self.subcategory is None:
+        if self.use_class_list:
+            class_list = util.get_class_list(class_file_path='../data/classes.txt')
+            for class_name in class_list:
+                self.subcategory = class_name
+                self.do_one()
+        elif self.subcategory is None:
             results = self.source_db.get_all_subcategories()
             for result in results:
                 _, self.subcategory, _, _, _ = result
@@ -199,6 +198,8 @@ class Main:
         logging.info(f'Elapsed time = {minutes}m {seconds}s\n')
 
     def do_one(self):
+        self.audio = audio.Audio(path_prefix='../')
+
         logging.info(f'Initializing database for {self.subcategory}')
         result = self.source_db.get_subcategory_details_by_name(self.subcategory)
         if result is None:
@@ -226,12 +227,16 @@ class Main:
         self.process_recordings(source_subcat_id, target_subcat_id)
         logging.info(f'Inserted {self.inserted_spectrograms} spectrograms')
 
+        del self.audio
+        keras.backend.clear_session()
+
 if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-lnd', type=int, default=0, help='1 = spectrograms for low noise detector. Default = 0.')
+    parser.add_argument('-c', type=int, default=0, help='If 1, get list of classes to extract from data/classes.txt. Default = 0.')
     parser.add_argument('-d1', type=str, default='training', help='Source database name. Default = training')
     parser.add_argument('-d2', type=str, default='training2', help='Target database name. Default = training2')
+    parser.add_argument('-lnd', type=int, default=0, help='1 = spectrograms for low noise detector. Default = 0.')
     parser.add_argument('-m', type=int, default=0, help='Mode where 0 means just check file availability and 1 means also extract spectrograms. Default = 0.')
     parser.add_argument('-r1', type=str, default='/home/jhuus/data', help='Root directory containing bird/BLJA etc. Default is /home/jhuus/data')
     parser.add_argument('-r2', type=str, default='/media/jhuus/Data/bird', help='Root directory to copy missing files from.')
@@ -244,4 +249,4 @@ if __name__ == '__main__':
 
     logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d %(message)s', datefmt='%H:%M:%S')
 
-    Main(args.m, args.r1, args.r2, args.s, args.p, args.o, args.d1, args.d2, args.lnd, args.z).run()
+    Main(args.m, args.r1, args.r2, args.c, args.s, args.p, args.o, args.d1, args.d2, args.lnd, args.z).run()
