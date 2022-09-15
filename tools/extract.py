@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 # this is necessary before importing from a peer directory
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
-sys.path.insert(0, parentdir) 
+sys.path.insert(0, parentdir)
 
 from core import audio
 from core import database
@@ -30,10 +30,10 @@ class Spectrogram:
         self.offset = offset
 
 class Main:
-    def __init__(self, source, category, code, root, dbname, input_path, spec_type, subcategory, target_dir, binary_classifier):
+    def __init__(self, source, category, code, root, dbname, input_path, spec_type, subcategory, target_dir):
         self.db = database.Database(filename=f'../data/{dbname}.db')
         self.audio = audio.Audio(path_prefix='../')
-        
+
         self.source = source
         self.category = category
         self.code = code
@@ -43,15 +43,14 @@ class Main:
         self.spec_type = spec_type
         self.subcategory = subcategory
         self.target_dir = target_dir
-        self.binary_classifier = (binary_classifier == 1)
-        
+
     def _get_offsets(self, filename):
         base_name = Path(filename).stem
         if base_name in self.offsets_dict.keys():
             return self.offsets_dict[base_name]
         else:
             return []
-        
+
     def _get_source_id(self, filename):
         if self.source is not None:
             return self.source_id
@@ -80,12 +79,12 @@ class Main:
         if recording_id is None:
             recording_id = self.db.insert_recording(source_id, self.subcategory_id, url, filename, seconds)
 
-        raw_specs = self.audio.get_spectrograms(offsets, binary_classifier=self.binary_classifier)
+        raw_specs = self.audio.get_spectrograms(offsets)
         for i in range(len(offsets)):
             specs.append(Spectrogram(raw_specs[i], f'{prefix}-{offsets[i]:.2f}', recording_id, offsets[i]))
-            
+
         return specs, raw_specs
-        
+
     # insert spectrograms into the database
     def _import_spectrograms(self):
         print(f'import spectrograms')
@@ -100,11 +99,11 @@ class Main:
             offsets = self._get_offsets(filename)
             if len(offsets) == 0:
                 continue
-                
+
             curr_specs, curr_raw_specs = self._get_spectrograms(audio_file, offsets)
             specs.extend(curr_specs)
             raw_specs.extend(curr_raw_specs)
-            
+
         for spec in specs:
             if not spec.spec is None:
                 # convert to bytes, zip it and insert in database
@@ -123,13 +122,13 @@ class Main:
         self.category_id = self.db.get_category_by_name(self.category)
         if self.category_id is None:
             self.category_id = self.db.insert_category(self.category)
-            
+
         result = self.db.get_subcategory(self.category_id, self.subcategory)
         if result is None:
             self.subcategory_id = self.db.insert_subcategory(self.category_id, self.subcategory, code=self.code)
         else:
             (self.subcategory_id, _) = result
-                
+
     # read file containing spec info and update self.offsets_dict
     def _process_specs_file(self, specs_file_path):
         for line in util.get_file_lines(specs_file_path):
@@ -139,10 +138,10 @@ class Main:
                     pos = line.rindex('-')
                     filename = line[:pos]
                     offset = float(line[pos+1:])
-                    
+
                     if filename not in self.offsets_dict.keys():
                         self.offsets_dict[filename] = []
-                        
+
                     self.offsets_dict[filename].append(offset)
             except:
                 continue
@@ -151,10 +150,10 @@ class Main:
         pos = name.rindex('-')
         filename = name[:pos]
         offset = float(name[pos+1:])
-        
+
         if filename not in self.offsets_dict.keys():
             self.offsets_dict[filename] = []
-            
+
         self.offsets_dict[filename].append(offset)
 
     # after doing everything else, it is sometimes useful to copy the used audio files to a target directory
@@ -198,7 +197,7 @@ class Main:
                 base, ext = os.path.splitext(file_name)
                 if ext == '.png':
                     self._process_spec_name(base)
-        
+
         self._import_spectrograms()
         self._copy_files()
         self.db.close()
@@ -215,12 +214,11 @@ if __name__ == '__main__':
     parser.add_argument('-r', type=str, default='', help='Spectrogram type, e.g. chip or tink.')
     parser.add_argument('-s', type=str, default='', help='Subcategory (e.g. "Baltimore Oriole").')
     parser.add_argument('-t', type=str, default='/home/jhuus/data/bird', help='Copy used audio files to a "bird code" directory under this, if specified')
-    parser.add_argument('-x', type=int, default=0, help='If x = 1, extract spectrograms for binary classifier. Default = 0.')
-    
+
     args = parser.parse_args()
     start_time = time.time()
 
-    Main(args.a, args.b, args.c, args.d, args.f, args.i, args.r, args.s, args.t, args.x).run()
+    Main(args.a, args.b, args.c, args.d, args.f, args.i, args.r, args.s, args.t).run()
 
     elapsed = time.time() - start_time
-    print(f'elapsed seconds = {elapsed:.3f}')    
+    print(f'elapsed seconds = {elapsed:.3f}')
