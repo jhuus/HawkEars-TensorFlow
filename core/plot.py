@@ -12,7 +12,7 @@ from core import config as cfg
 def plot_spec(spec, path, low_noise_detector=False, gray_scale=False):
     if spec.ndim == 3:
         if low_noise_detector:
-            spec = spec.reshape((cfg.low_noise_spec_height, cfg.spec_width))
+            spec = spec.reshape((cfg.lnd_spec_height, cfg.spec_width))
         else:
             spec = spec.reshape((cfg.spec_height, cfg.spec_width))
 
