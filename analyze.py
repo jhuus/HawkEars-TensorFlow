@@ -22,10 +22,6 @@ from core import config as cfg
 from core import plot
 from core import util
 
-TOP_N = 6 # number of top matches to log in debug mode
-ADJACENT_PROB_FACTOR = 0.65 # when checking if adjacent segment matches species, use self.min_prob times this
-DENOISED_PROB_FACTOR = 0.55 # check denoised prediction if std one is >= min_prob times this
-
 class ClassInfo:
     def __init__(self, name, code, ignore):
         self.name = name
@@ -45,16 +41,13 @@ class Label:
         self.end_time = end_time
 
 class Analyzer:
-    def __init__(self, input_path, output_path, min_prob, start_time, end_time, use_codes, debug_mode, check_adjacent):
+    def __init__(self, input_path, output_path, start_time, end_time, debug_mode):
 
         self.input_path = input_path.strip()
         self.output_path = output_path.strip()
-        self.min_prob = min_prob
         self.start_seconds = self._get_seconds_from_time_string(start_time)
         self.end_seconds = self._get_seconds_from_time_string(end_time)
-        self.use_codes = (use_codes == 1)
         self.debug_mode = (debug_mode == 1)
-        self.check_adjacent = (check_adjacent == 1)
 
         if self.start_seconds is not None and self.end_seconds is not None and self.end_seconds < self.start_seconds + cfg.segment_len:
                 logging.error(f'Error: end time must be >= start time + {cfg.segment_len} seconds')
@@ -100,14 +93,6 @@ class Analyzer:
             logging.error(f'Error: {self.input_path} is not a directory or an audio file.')
             sys.exit()
 
-    def _get_prediction(self, prediction, denoised_prediction):
-        # use the standard prediction if it is big enough or small enough
-        if prediction >= self.min_prob or prediction < self.min_prob * DENOISED_PROB_FACTOR:
-            return prediction
-
-        # the standard prediction is close but not quite high enough, so factor in the denoised one
-        return max(prediction, denoised_prediction)
-
     def _get_predictions(self, signal, rate):
         # if needed, pad the signal with zeros to get the last spectrogram
 
@@ -127,27 +112,17 @@ class Analyzer:
             end_seconds = self.end_seconds
 
         specs = self._get_specs(start_seconds, end_seconds)
-
-        # get a second set of specs with noise removed
-        denoised_temp = self.denoiser.predict(specs)
-        denoised_specs = np.zeros((len(self.offsets), cfg.spec_height, cfg.spec_width, 1))
-        for i in range(len(self.offsets)):
-            spec = denoised_temp[i] / denoised_temp[i].max() # make the max 1
-            denoised_specs[i] = np.clip(spec, 0, 1) # clip negative values
-
         predictions = self.model.predict(specs)
 
-        denoised_predictions = self.model.predict(denoised_specs)
-
         if self.debug_mode:
-            self._log_predictions(predictions, denoised_predictions)
+            self._log_predictions(predictions)
 
         # populate class_infos with predictions
         for i in range(len(self.offsets)):
             for j in range(len(self.class_infos)):
-                    value = self._get_prediction(predictions[i][j], denoised_predictions[i][j])
+                    value = predictions[i][j]
                     self.class_infos[j].probs.append(value)
-                    if (self.class_infos[j].probs[-1] >= self.min_prob):
+                    if (self.class_infos[j].probs[-1] >= cfg.min_prob):
                         self.class_infos[j].has_label = True
 
     def _get_seconds_from_time_string(self, time_str):
@@ -193,13 +168,13 @@ class Analyzer:
 
         # generate labels for one class at a time
         labels = []
-        min_adj_prob = self.min_prob * ADJACENT_PROB_FACTOR # in mode 0, adjacent segments need this prob at least
+        min_adj_prob = cfg.min_prob * cfg.adjacent_prob_factor # in mode 0, adjacent segments need this prob at least
 
         for class_info in self.class_infos:
             if class_info.ignore or not class_info.has_label:
                 continue
 
-            if self.use_codes:
+            if cfg.use_banding_codes:
                 name = class_info.code
             else:
                 name = class_info.name
@@ -209,13 +184,13 @@ class Analyzer:
             for i in range(len(probs)):
 
                 # create a label if probability exceeds the threshold
-                if probs[i] >= self.min_prob:
+                if probs[i] >= cfg.min_prob:
                     use_prob = probs[i]
                 else:
                     continue
 
                 end_time = self.offsets[i]+cfg.segment_len
-                if self.check_adjacent:
+                if cfg.check_adjacent:
                     if i not in [0, len(probs) - 1]:
                         if probs[i - 1] < min_adj_prob and probs[i + 1] < min_adj_prob:
                             continue
@@ -250,26 +225,16 @@ class Analyzer:
             sys.exit()
 
     # in debug mode, output the top predictions
-    def _log_predictions(self, predictions, denoised_predictions):
+    def _log_predictions(self, predictions):
         predictions = np.copy(predictions[0])
         print("\ntop predictions")
 
-        for i in range(TOP_N):
+        for i in range(cfg.top_n):
             j = np.argmax(predictions)
             code = self.class_infos[j].code
             confidence = predictions[j]
             print(f"{code}: {confidence}")
             predictions[j] = 0
-
-        print("\ntop predictions (denoised)")
-
-        denoised_predictions = np.copy(denoised_predictions[0])
-        for i in range(TOP_N):
-            j = np.argmax(denoised_predictions)
-            code = self.class_infos[j].code
-            confidence = denoised_predictions[j]
-            print(f"{code}: {confidence}")
-            denoised_predictions[j] = 0
 
         print("")
 
@@ -278,7 +243,6 @@ class Analyzer:
 
         # load the models
         self.model = keras.models.load_model(cfg.ckpt_path, compile=False)
-        self.denoiser = keras.models.load_model(cfg.denoiser_path, compile=False)
 
         for i, file_path in enumerate(file_list):
             self._analyze_file(file_path)
@@ -287,10 +251,8 @@ class Analyzer:
             if (i + 1) % cfg.reset_model_counter == 0:
                 keras.backend.clear_session()
                 del self.model
-                del self.denoiser
                 del self.audio
                 self.model = keras.models.load_model(cfg.ckpt_path, compile=False)
-                self.denoiser = keras.models.load_model(cfg.denoiser_path, compile=False)
                 self.audio = audio.Audio()
 
         elapsed = time.time() - start_time
@@ -299,15 +261,18 @@ class Analyzer:
         logging.info(f'Elapsed time = {minutes}m {seconds}s')
 
 if __name__ == '__main__':
+    check_adjacent = 1 if cfg.check_adjacent else 0
+    use_banding_codes = 1 if cfg.use_banding_codes else 0
+
     # command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-a', type=int, default=1, help='1 = Ignore if neither adjacent/overlapping spectrogram matches. Default = 1.')
-    parser.add_argument('-b', type=int, default=0, help='0 = Use species names in labels, 1 = Use banding codes. Default = 0.')
+    parser.add_argument('-a', type=int, default=check_adjacent, help=f'1 = Ignore if neither adjacent/overlapping spectrogram matches. Default = {check_adjacent}.')
+    parser.add_argument('-b', type=int, default=use_banding_codes, help=f'1 = Use banding codes in labels, 0 = Use species names. Default = {use_banding_codes}.')
     parser.add_argument('-e', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional.')
     parser.add_argument('-g', type=int, default=0, help='1 = debug mode (analyze one spectrogram only, and output several top candidates). Default = 0.')
     parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default.')
     parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is input directory.')
-    parser.add_argument('-p', type=float, default=0.9, help='Minimum confidence level. Default = 0.9.')
+    parser.add_argument('-p', type=float, default=cfg.min_prob, help=f'Minimum confidence level. Default = {cfg.min_prob}.')
     parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional.')
     args = parser.parse_args()
 
@@ -319,5 +284,9 @@ if __name__ == '__main__':
         logging.error('Error: p must be >= 0')
         quit()
 
-    analyzer = Analyzer(args.i, args.o, args.p, args.s, args.e, args.b, args.g, args.a)
+    cfg.check_adjacent = (args.a == 1)
+    cfg.use_banding_codes = (args.b == 1)
+    cfg.min_prob = args.p
+
+    analyzer = Analyzer(args.i, args.o, args.s, args.e, args.g)
     analyzer.run(start_time)
