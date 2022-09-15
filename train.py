@@ -52,38 +52,30 @@ class Trainer:
         plt.savefig(f'{dir}/{key1}.png')
 
     def run(self):
-        # only use MirroredStrategy in a multi-GPU environment
-        #strategy = tf.distribute.MirroredStrategy()
+        #strategy = tf.distribute.MirroredStrategy() # for multi-GPU training
         strategy = tf.distribute.get_strategy()
         with strategy.scope():
-            # define and compile the model
-
             if cfg.load_saved_model:
                 model = keras.models.load_model(cfg.ckpt_path)
             else:
-                if cfg.multi_label:
-                    class_act = 'sigmoid'
-                else:
-                    # used only for spectrogram search
-                    class_act = 'softmax'
-
+                class_act = 'sigmoid' if cfg.multi_label else 'softmax'
+                spec_height = cfg.lnd_spec_height if cfg.low_noise_detector else cfg.spec_height
                 model = efficientnet_v2.EfficientNetV2(
                         model_type=cfg.eff_config,
                         num_classes=len(self.classes),
-                        input_shape=(self.spec_height, cfg.spec_width, 1),
+                        input_shape=(spec_height, cfg.spec_width, 1),
                         activation='swish',
                         classifier_activation=class_act,
                         dropout=0.15,
                         drop_connect_rate=0.25)
 
             opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
-
             if cfg.multi_label:
                 loss = keras.losses.BinaryCrossentropy(label_smoothing = 0.13)
+                model.compile(loss=loss, optimizer=opt)
             else:
                 loss = keras.losses.CategoricalCrossentropy(label_smoothing = 0.13)
-
-            model.compile(loss = loss, optimizer = opt, metrics = 'accuracy')
+                model.compile(loss=loss, optimizer=opt, metrics='accuracy')
 
         # create output directory
         dir = 'summary'
@@ -107,8 +99,7 @@ class Trainer:
         options = tf.data.Options()
         options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
 
-        datagen = data_generator.DataGenerator(self.db, self.x_train, self.y_train, self.train_class, seed=cfg.seed,
-                                               low_noise_detector=cfg.low_noise_detector, multilabel=cfg.multi_label)
+        datagen = data_generator.DataGenerator(self.db, self.x_train, self.y_train, self.train_class)
         train_ds = tf.data.Dataset.from_generator(
             datagen,
             output_types=(tf.float16, tf.float16),
@@ -120,34 +111,33 @@ class Trainer:
         test_ds = test_ds.with_options(options)
         test_ds = test_ds.batch(cfg.batch_size)
 
-        class_weight = self._get_class_weight()
-
         # run training
-        if cfg.seed is None:
-            workers = 2
-        else:
-            workers = 0 # run data augmentation in main thread to improve repeatability
-
         start_time = time.time()
         history = model.fit(train_ds, epochs = cfg.num_epochs, verbose = cfg.verbosity, validation_data = test_ds,
-            workers = workers, shuffle = False, callbacks = callbacks, class_weight = class_weight)
+            shuffle = False, callbacks = callbacks, class_weight = self._get_class_weight())
         elapsed = time.time() - start_time
 
-        # output loss/accuracy graphs and a summary report
-        training_accuracy = history.history["accuracy"][-1]
-        if len(self.x_test) > 0:
-            self.plot_results(dir, history, 'accuracy', 'val_accuracy')
-            self.plot_results(dir, history, 'loss', 'val_loss')
-            scores = model.evaluate(self.x_test, self.y_test)
-            test_accuracy = scores[1]
-        else:
-            self.plot_results(dir, history, 'accuracy')
-            self.plot_results(dir, history, 'loss')
+        if cfg.verbosity >= 2:
+            # output loss graph
+            if len(self.x_test) > 0:
+                self.plot_results(dir, history, 'loss', 'val_loss')
+            else:
+                self.plot_results(dir, history, 'loss')
 
-        if cfg.verbosity >= 2 and len(self.x_test) > 0:
-            # report on misidentified test spectrograms
-            predictions = model.predict(self.x_test)
-            self.analyze_predictions(predictions)
+            if not cfg.multi_label:
+                # output accuracy graph
+                training_accuracy = history.history["accuracy"][-1]
+                if len(self.x_test) > 0:
+                    self.plot_results(dir, history, 'accuracy', 'val_accuracy')
+                    scores = model.evaluate(self.x_test, self.y_test)
+                    test_accuracy = scores[1]
+                else:
+                    self.plot_results(dir, history, 'accuracy')
+
+            if len(self.x_test) > 0:
+                # report on misidentified test spectrograms
+                predictions = model.predict(self.x_test)
+                self.analyze_predictions(predictions)
 
         if cfg.verbosity > 0:
             with open(f'{dir}/summary.txt','w') as text_output:
@@ -156,7 +146,9 @@ class Trainer:
                 text_output.write(f'Epochs: {cfg.num_epochs}\n')
 
                 text_output.write(f"Training loss: {history.history['loss'][-1]:.3f}\n")
-                text_output.write(f'Training accuracy: {training_accuracy:.3f}\n')
+
+                if not cfg.multi_label:
+                    text_output.write(f'Training accuracy: {training_accuracy:.3f}\n')
 
                 if len(self.x_test) > 0:
                     text_output.write(f'Test loss: {scores[0]:.3f}\n')
@@ -167,7 +159,10 @@ class Trainer:
                 seconds = int(elapsed) % 60
                 text_output.write(f'Elapsed time for training = {minutes}m {seconds}s\n')
 
-            print(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
+
+            if len(self.x_test) > 0:
+                print(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
+
             print(f'Elapsed time for training = {minutes}m {seconds}s\n')
 
         return model_checkpoint_callback.best_val_accuracy
@@ -276,13 +271,8 @@ class Trainer:
         average = sum / len(self.classes)
         avg_sqrt = math.sqrt(average)
         for i, class_name in enumerate(self.classes):
-            if cfg.apply_sqrt_to_weights:
-                weight = avg_sqrt / math.sqrt(num_specs[class_name])
-            else:
-                weight = average / num_specs[class_name]
+            weight = avg_sqrt / math.sqrt(num_specs[class_name])
 
-            weight = max(weight, cfg.min_class_weight)
-            weight = min(weight, cfg.max_class_weight)
             print(f'Applying weight {weight:.2f} to {class_name}')
             class_weight[i] = weight
 
@@ -290,7 +280,7 @@ class Trainer:
 
     def init(self):
         if cfg.low_noise_detector:
-            self.spec_height = cfg.low_noise_spec_height
+            self.spec_height = cfg.lnd_spec_height
         else:
             self.spec_height = cfg.spec_height
 
@@ -423,15 +413,14 @@ if __name__ == '__main__':
     if cfg.seed != None:
         # these settings make results more reproducible, which is very useful when tuning parameters
         os.environ['PYTHONHASHSEED'] = str(cfg.seed)
-        #os.environ['TF_DETERMINISTIC_OPS'] = '1'
-        os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+        #os.environ['TF_CUDNN_DETERMINISTIC'] = '1' # uncomment this for more determinism, but much slower
         random.seed(cfg.seed)
         np.random.seed(cfg.seed)
         tf.random.set_seed(cfg.seed)
         tf.config.threading.set_inter_op_parallelism_threads(1)
         tf.config.threading.set_intra_op_parallelism_threads(1)
 
-    # mixed precision trains 25-30% faster but limits portability
+    # mixed precision trains 25-30% faster, but limits portability
     if cfg.mixed_precision:
         keras.mixed_precision.set_global_policy("mixed_float16")
 
