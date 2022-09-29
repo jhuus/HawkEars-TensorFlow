@@ -5,6 +5,7 @@
 import argparse
 import logging
 import os
+import re
 import sys
 import time
 import warnings
@@ -19,6 +20,7 @@ from tensorflow import keras
 
 from core import audio
 from core import config as cfg
+from core import frequency_db
 from core import plot
 from core import util
 
@@ -27,11 +29,13 @@ class ClassInfo:
         self.name = name
         self.code = code
         self.ignore = ignore
+        self.frequency_too_low = False
         self.reset()
 
     def reset(self):
         self.has_label = False
         self.probs = [] # predictions (one per segment)
+        self.frequency_too_low = False
 
 class Label:
     def __init__(self, class_name, probability, start_time, end_time):
@@ -41,12 +45,15 @@ class Label:
         self.end_time = end_time
 
 class Analyzer:
-    def __init__(self, input_path, output_path, start_time, end_time, debug_mode):
+    def __init__(self, input_path, output_path, start_time, end_time, date_str, latitude, longitude, debug_mode):
 
         self.input_path = input_path.strip()
         self.output_path = output_path.strip()
         self.start_seconds = self._get_seconds_from_time_string(start_time)
         self.end_seconds = self._get_seconds_from_time_string(end_time)
+        self.date_str = date_str
+        self.latitude = latitude
+        self.longitude = longitude
         self.debug_mode = (debug_mode == 1)
 
         if self.start_seconds is not None and self.end_seconds is not None and self.end_seconds < self.start_seconds + cfg.segment_len:
@@ -67,6 +74,78 @@ class Analyzer:
 
         self.class_infos = self._get_class_infos()
         self.audio = audio.Audio()
+        self._process_lat_lon_date()
+
+    # process latitude, longitude and date
+    def _process_lat_lon_date(self):
+        if self.latitude is None and self.longitude is None and self.date_str is None:
+            self.check_frequency = False
+            return
+
+        self.check_frequency = True
+        if self.latitude is None or self.longitude is None or self.date_str is None:
+            logging.error(f'Error: if latitude, longitude or date are specified, all three must be specified')
+            quit()
+
+        if self.date_str == 'file':
+            self.get_date_from_file_name = True
+        else:
+            self.get_date_from_file_name = False
+            self.week_num = self._get_week_num_from_date_str(self.date_str)
+            if self.week_num is None:
+                logging.error(f'Error: invalid date string: {self.date_str}')
+                quit()
+
+        freq_db = frequency_db.Frequency_DB()
+        self.counties = freq_db.get_all_counties()
+
+        county = None
+        for c in self.counties:
+            if self.latitude >= c.min_y and self.latitude <= c.max_y and self.longitude >= c.min_x and self.longitude <= c.max_x:
+                county = c
+                break
+
+        if county is None:
+            logging.error(f'Error: no eBird county found matching given latitude and longitude')
+            quit()
+        else:
+            logging.info(f'Matching species in {county.name} ({county.code})')
+
+        for class_info in self.class_infos:
+            if not class_info.ignore:
+                results = freq_db.get_frequencies(county.id, class_info.name)
+                class_info.frequency_dict = {}
+                for result in results:
+                    class_info.frequency_dict[result.week_num] = result.value
+
+    # return week number in the range [1, 48] as used by eBird barcharts, i.e. 4 weeks per month
+    def _get_week_num_from_date_str(self, date_str):
+        if not date_str.isnumeric():
+            return None
+
+        if len(date_str) >= 4:
+            month = int(date_str[-4:-2])
+            day = int(date_str[-2:])
+            week_num = (month - 1) * 4 + min(4, (day - 1) // 7 + 1)
+            return week_num
+        else:
+            return None
+
+    def _get_seconds_from_time_string(self, time_str):
+        time_str = time_str.strip()
+        if len(time_str) == 0:
+            return None
+
+        seconds = 0
+        tokens = time_str.split(':')
+        if len(tokens) > 2:
+            seconds += 3600 * int(tokens[-3])
+
+        if len(tokens) > 1:
+            seconds += 60 * int(tokens[-2])
+
+        seconds += float(tokens[-1])
+        return seconds
 
     def _get_class_infos(self):
         classes = util.get_class_list(class_file_path=cfg.classes_file)
@@ -111,40 +190,33 @@ class Analyzer:
         else:
             end_seconds = self.end_seconds
 
-        specs = self._get_specs(start_seconds, end_seconds)
+        specs = self._get_specs(start_seconds, end_seconds, filter=False, dampen_low_noise=True)
+        if cfg.bandpass_filter:
+            filtered_specs = self._get_specs(start_seconds, end_seconds, filter=True, dampen_low_noise=False)
+        else:
+            filtered_specs = None
+
+        logging.info('Done creating spectrograms')
+
         predictions = self.model.predict(specs)
+        if cfg.bandpass_filter:
+            filtered_predictions = self.model.predict(filtered_specs)
 
         if self.debug_mode:
-            self._log_predictions(predictions)
+            self._log_predictions(predictions, filtered_predictions)
 
-        # populate class_infos with predictions
+        # populate class_infos with predictions, using the max with and without bandpass filter
         for i in range(len(self.offsets)):
             for j in range(len(self.class_infos)):
-                    value = predictions[i][j]
+                    value = max(predictions[i][j], filtered_predictions[i][j]) if cfg.bandpass_filter else predictions[i][j]
                     self.class_infos[j].probs.append(value)
                     if (self.class_infos[j].probs[-1] >= cfg.min_prob):
                         self.class_infos[j].has_label = True
 
-    def _get_seconds_from_time_string(self, time_str):
-        time_str = time_str.strip()
-        if len(time_str) == 0:
-            return None
-
-        seconds = 0
-        tokens = time_str.split(':')
-        if len(tokens) > 2:
-            seconds += 3600 * int(tokens[-3])
-
-        if len(tokens) > 1:
-            seconds += 60 * int(tokens[-2])
-
-        seconds += float(tokens[-1])
-        return seconds
-
     # get the list of spectrograms
-    def _get_specs(self, start_seconds, end_seconds):
+    def _get_specs(self, start_seconds, end_seconds, filter, dampen_low_noise):
         self.offsets = np.arange(start_seconds, end_seconds + 1.0, 1.0).tolist()
-        specs = self.audio.get_spectrograms(self.offsets)
+        specs = self.audio.get_spectrograms(self.offsets, filter=filter, dampen_low_noise=dampen_low_noise)
 
         spec_array = np.zeros((len(specs), cfg.spec_height, cfg.spec_width, 1))
         for i in range(len(specs)):
@@ -155,9 +227,24 @@ class Analyzer:
     def _analyze_file(self, file_path):
         logging.info(f'Analyzing {file_path}')
 
-        # clear info from previous recording
+        check_frequency = False
+        if self.check_frequency:
+            check_frequency = True
+            if self.get_date_from_file_name:
+                result = re.split('\S+_(\d+)_.*', os.path.basename(file_path))
+                if len(result) > cfg.file_date_regex_group:
+                    date_str = result[cfg.file_date_regex_group]
+                    self.week_num = self._get_week_num_from_date_str(date_str)
+                    if self.week_num is None:
+                        logging.error(f'Error: invalid date string: {self.date_str} extracted from {file_path}')
+                        check_frequency = False # ignore species frequencies for this file
+
+        # clear info from previous recording, and mark classes where frequency of eBird reports is too low
         for class_info in self.class_infos:
             class_info.reset()
+            if check_frequency and not class_info.ignore:
+                if not self.week_num in class_info.frequency_dict or class_info.frequency_dict[self.week_num] < cfg.min_freq:
+                    class_info.frequency_too_low = True
 
         signal, rate = self.audio.load(file_path)
 
@@ -171,7 +258,7 @@ class Analyzer:
         min_adj_prob = cfg.min_prob * cfg.adjacent_prob_factor # in mode 0, adjacent segments need this prob at least
 
         for class_info in self.class_infos:
-            if class_info.ignore or not class_info.has_label:
+            if class_info.ignore or class_info.frequency_too_low or not class_info.has_label:
                 continue
 
             if cfg.use_banding_codes:
@@ -225,16 +312,24 @@ class Analyzer:
             sys.exit()
 
     # in debug mode, output the top predictions
-    def _log_predictions(self, predictions):
+    def _log_predictions(self, predictions, filtered_predictions):
         predictions = np.copy(predictions[0])
         print("\ntop predictions")
-
         for i in range(cfg.top_n):
             j = np.argmax(predictions)
             code = self.class_infos[j].code
             confidence = predictions[j]
             print(f"{code}: {confidence}")
             predictions[j] = 0
+
+        if cfg.bandpass_filter:
+            print("\ntop predictions on filtered audio")
+            for i in range(cfg.top_n):
+                j = np.argmax(filtered_predictions)
+                code = self.class_infos[j].code
+                confidence = filtered_predictions[j]
+                print(f"{code}: {confidence}")
+                filtered_predictions[j] = 0
 
         print("")
 
@@ -266,27 +361,30 @@ if __name__ == '__main__':
 
     # command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-a', type=int, default=check_adjacent, help=f'1 = Ignore if neither adjacent/overlapping spectrogram matches. Default = {check_adjacent}.')
-    parser.add_argument('-b', type=int, default=use_banding_codes, help=f'1 = Use banding codes in labels, 0 = Use species names. Default = {use_banding_codes}.')
-    parser.add_argument('-e', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional.')
-    parser.add_argument('-g', type=int, default=0, help='1 = debug mode (analyze one spectrogram only, and output several top candidates). Default = 0.')
-    parser.add_argument('-i', type=str, default='', help='Input path (single audio file or directory). No default.')
-    parser.add_argument('-o', type=str, default='', help='Output directory to contain Audacity label files. Default is input directory.')
-    parser.add_argument('-p', type=float, default=cfg.min_prob, help=f'Minimum confidence level. Default = {cfg.min_prob}.')
-    parser.add_argument('-s', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional.')
+    parser.add_argument('-a', '--adj', type=int, default=check_adjacent, help=f'1 = Ignore if neither adjacent/overlapping spectrogram matches. Default = {check_adjacent}.')
+    parser.add_argument('-b', '--band', type=int, default=use_banding_codes, help=f'1 = Use banding codes in labels, 0 = Use species names. Default = {use_banding_codes}.')
+    parser.add_argument('-d', '--debug', type=int, default=0, help='1 = debug mode (analyze one spectrogram only, and output several top candidates). Default = 0.')
+    parser.add_argument('-e', '--end', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional.')
+    parser.add_argument('-i', '--input', type=str, default='', help='Input path (single audio file or directory). No default.')
+    parser.add_argument('--date', type=str, default=None, help=f'Date in yyyymmdd, mmdd, or file. Specifying file extracts the date from the file name, using the reg ex defined in config.py.')
+    parser.add_argument('--lat', type=float, default=None, help=f'Latitude')
+    parser.add_argument('--lon', type=float, default=None, help=f'Longitude')
+    parser.add_argument('-o', '--output', type=str, default='', help='Output directory to contain Audacity label files. Default is input directory.')
+    parser.add_argument('-p', '--prob', type=float, default=cfg.min_prob, help=f'Minimum confidence level. Default = {cfg.min_prob}.')
+    parser.add_argument('-s', '--start', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional.')
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d %(message)s', datefmt='%H:%M:%S')
     start_time = time.time()
     logging.info('Initializing')
 
-    if args.p < 0:
-        logging.error('Error: p must be >= 0')
+    if args.prob < 0:
+        logging.error('Error: prob must be >= 0')
         quit()
 
-    cfg.check_adjacent = (args.a == 1)
-    cfg.use_banding_codes = (args.b == 1)
-    cfg.min_prob = args.p
+    cfg.check_adjacent = (args.adj == 1)
+    cfg.use_banding_codes = (args.band == 1)
+    cfg.min_prob = args.prob
 
-    analyzer = Analyzer(args.i, args.o, args.s, args.e, args.g)
+    analyzer = Analyzer(args.input, args.output, args.start, args.end, args.date, args.lat, args.lon, args.debug)
     analyzer.run(start_time)
