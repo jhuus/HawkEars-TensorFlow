@@ -1,4 +1,4 @@
-# audio
+# basic audio
 segment_len = 3         # spectrogram duration in seconds
 sampling_rate = 40960   # 20 * 2048; with win_len and hop_len this ensures correct spectrogram widths
 win_length = 2048
@@ -11,8 +11,13 @@ mel_scale = True        # use False (linear scale) only for plotting spectrogram
 spec_exponent=.80       # raise spectrogram values to this exponent
 spec_block_seconds = 240 # max seconds of spectrogram to create at a time (limited by GPU memory)
 
+# bandpass filter
+bandpass_filter=False
+filter_min_freq=140
+filter_max_freq=10000
+filter_order=2
+
 # low noise detector
-dampen_low_noise = True
 lnd_spec_height = 32
 lnd_low_idx=7
 lnd_high_idx=20
@@ -34,6 +39,7 @@ multi_label = True
 save_best_only = False
 seed = None
 test_portion = 0
+frequency_db = 'frequency' # eBird barchart data, i.e. species report frequencies
 training_db = 'training' # name of training database
 validation_db = ''       # name of optional validation database
 verbosity = 1            # 0 omits output graphs, 2 adds plots of misidentified spectrograms, 3 adds graph of model
@@ -68,6 +74,9 @@ check_adjacent = True       # omit label unless adjacent segment matches
 adjacent_prob_factor = 0.75 # when checking if adjacent segment matches species, use self.min_prob times this
 reset_model_counter = 10    # in analysis, reset the model every n loops to avoid running out of GPU memory
 top_n = 6 # number of top matches to log in debug mode
+min_freq = .01             # ignore if species frequency less than this for location/week
+file_date_regex = '\S+_(\d+)_.*' # regex to extract date from file name (e.g. HNCAM015_20210529_161122.mp3)
+file_date_regex_group = 1   # use group at offset 1
 
 # paths
 ignore_file = 'data/ignore.txt'     # classes listed in this file are ignored in analysis
