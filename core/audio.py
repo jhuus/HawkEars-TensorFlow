@@ -1,3 +1,4 @@
+
 # Audio processing, especially extracting and returning spectrograms.
 
 import logging
@@ -15,11 +16,14 @@ from core import config as cfg
 
 class Audio:
     def __init__(self, path_prefix=''):
-        self.cache = {}
         self.have_signal = False
         self.signal = None
-        self.spectrogram = None
         self.low_noise_detector = low_noise_detector.LowNoiseDetector(path_prefix)
+
+    def _apply_bandpass_filter(self, sig):
+        window = np.array([cfg.filter_min_freq, cfg.filter_max_freq]) / (cfg.sampling_rate / 2.0)
+        filter_sos = scipy.signal.butter(cfg.filter_order, window, btype='bandpass', output='sos')
+        return scipy.signal.sosfiltfilt(filter_sos, sig)
 
     # width of spectrogram is determined by input signal length, and height = cfg.spec_height
     def _get_raw_spectrogram(self, signal):
@@ -48,15 +52,15 @@ class Audio:
 
     # version of get_spectrograms that calls _get_raw_spectrogram separately per offset,
     # which is faster when just getting a few spectrograms from a large recording
-    def _get_spectrograms_multi_spec(self, offsets):
-        last_offset = (len(self.signal) / cfg.sampling_rate) - cfg.segment_len
+    def _get_spectrograms_multi_spec(self, signal, offsets):
+        last_offset = (len(signal) / cfg.sampling_rate) - cfg.segment_len
         specs = []
         for offset in offsets:
             index = int(offset*cfg.sampling_rate)
             if offset <= last_offset:
-                segment = self.signal[index:index + cfg.segment_len * cfg.sampling_rate]
+                segment = signal[index:index + cfg.segment_len * cfg.sampling_rate]
             else:
-                segment = self.signal[index:]
+                segment = signal[index:]
                 pad_amount = cfg.segment_len * cfg.sampling_rate - segment.shape[0]
                 segment = np.pad(segment, ((0, pad_amount)), 'constant', constant_values=0)
 
@@ -190,42 +194,43 @@ class Audio:
 
     # return list of spectrograms for the given offsets (i.e. starting points in seconds);
     # you have to call load() before calling this
-    def get_spectrograms(self, offsets, seconds=cfg.segment_len, low_noise_detector=False, multi_spec=False):
+    def get_spectrograms(self, offsets, seconds=cfg.segment_len, multi_spec=False, filter=False, dampen_low_noise=False, low_noise_detector=False):
         if not self.have_signal:
             return None
 
+        signal = self.filtered_signal if filter else self.signal
         if multi_spec:
             # call _get_raw_spectrogram separately per offset, which is faster when just getting a few spectrograms from a large recording
-            specs = self._get_spectrograms_multi_spec(offsets)
+            specs = self._get_spectrograms_multi_spec(signal, offsets)
         else:
             # call _get_raw_spectrogram for the whole signal, then break it up into spectrograms;
             # this is faster when getting overlapping spectrograms for a whole recording
+            spectrogram = None
             spec_width_per_sec = int(cfg.spec_width / cfg.segment_len)
-            if self.spectrogram is None:
-                # create in blocks so we don't run out of GPU memory
-                start = 0
-                block_length = cfg.spec_block_seconds * cfg.sampling_rate
-                spec_width_per_sec
-                i = 0
-                while start < len(self.signal):
-                    i += 1
-                    length = min(block_length, len(self.signal) - start)
-                    spectrogram = self._get_raw_spectrogram(self.signal[start:start+length])
-                    if self.spectrogram is None:
-                        self.spectrogram = spectrogram
-                    else:
-                        self.spectrogram = np.concatenate((self.spectrogram, spectrogram), axis=1)
+            # create in blocks so we don't run out of GPU memory
+            start = 0
+            block_length = cfg.spec_block_seconds * cfg.sampling_rate
+            spec_width_per_sec
+            i = 0
+            while start < len(signal):
+                i += 1
+                length = min(block_length, len(signal) - start)
+                block = self._get_raw_spectrogram(signal[start:start+length])
+                if spectrogram is None:
+                    spectrogram = block
+                else:
+                    spectrogram = np.concatenate((spectrogram, block), axis=1)
 
-                    start += length
+                start += length
 
-            last_offset = (self.spectrogram.shape[1] / spec_width_per_sec) - cfg.segment_len
+            last_offset = (spectrogram.shape[1] / spec_width_per_sec) - cfg.segment_len
 
             specs = []
             for offset in offsets:
                 if offset <= last_offset:
-                    specs.append(self.spectrogram[:, int(offset * spec_width_per_sec) : int((offset + cfg.segment_len) * spec_width_per_sec)])
+                    specs.append(spectrogram[:, int(offset * spec_width_per_sec) : int((offset + cfg.segment_len) * spec_width_per_sec)])
                 else:
-                    spec = self.spectrogram[:, int(offset * spec_width_per_sec):]
+                    spec = spectrogram[:, int(offset * spec_width_per_sec):]
                     spec = np.pad(spec, ((0, 0), (0, cfg.spec_width - spec.shape[1])), 'constant', constant_values=0)
                     specs.append(spec)
 
@@ -239,11 +244,10 @@ class Audio:
                 # return only the lowest frequencies for binary classifier spectrograms
                 specs[i] = specs[i][:cfg.lnd_spec_height, :]
         else:
-            if cfg.dampen_low_noise:
+            if dampen_low_noise:
                 self._dampen_low_noise(specs)
                 self._normalize(specs)
 
-        logging.info('Done creating spectrograms')
         return specs
 
     def signal_len(self):
@@ -252,7 +256,7 @@ class Audio:
     def load(self, path):
         self.have_signal = False
         self.signal = None
-        self.spectrogram = None
+        spectrogram = None
 
         try:
             bytes, _ = (ffmpeg
@@ -267,6 +271,8 @@ class Audio:
             floats = scale * np.frombuffer(bytes, fmt).astype(np.float32)
             self.signal = np.asarray(floats)
             self.have_signal = True
+            if cfg.bandpass_filter:
+                self.filtered_signal = self._apply_bandpass_filter(self.signal)
         except ffmpeg.Error as e:
             tokens = e.stderr.decode().split('\n')
             if len(tokens) >= 2:
