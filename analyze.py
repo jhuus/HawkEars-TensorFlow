@@ -20,7 +20,7 @@ from tensorflow import keras
 
 from core import audio
 from core import config as cfg
-#from core import frequency_db
+from core import frequency_db
 from core import plot
 from core import util
 
@@ -82,7 +82,6 @@ class Analyzer:
             self.check_frequency = False
             return
 
-        '''
         self.check_frequency = True
         if self.latitude is None or self.longitude is None or self.date_str is None:
             logging.error(f'Error: if latitude, longitude or date are specified, all three must be specified')
@@ -118,7 +117,6 @@ class Analyzer:
                 class_info.frequency_dict = {}
                 for result in results:
                     class_info.frequency_dict[result.week_num] = result.value
-        '''
 
     # return week number in the range [1, 48] as used by eBird barcharts, i.e. 4 weeks per month
     def _get_week_num_from_date_str(self, date_str):
