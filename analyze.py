@@ -369,6 +369,7 @@ if __name__ == '__main__':
     parser.add_argument('--date', type=str, default=None, help=f'Date in yyyymmdd, mmdd, or file. Specifying file extracts the date from the file name, using the reg ex defined in config.py.')
     parser.add_argument('--lat', type=float, default=None, help=f'Latitude')
     parser.add_argument('--lon', type=float, default=None, help=f'Longitude')
+    parser.add_argument('-m', '--min_freq', type=float, default=cfg.min_freq, help=f'Cutoff for location/date filtering')
     parser.add_argument('-o', '--output', type=str, default='', help='Output directory to contain Audacity label files. Default is input directory.')
     parser.add_argument('-p', '--prob', type=float, default=cfg.min_prob, help=f'Minimum confidence level. Default = {cfg.min_prob}.')
     parser.add_argument('-s', '--start', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional.')
@@ -385,6 +386,7 @@ if __name__ == '__main__':
     cfg.check_adjacent = (args.adj == 1)
     cfg.use_banding_codes = (args.band == 1)
     cfg.min_prob = args.prob
+    cfg.min_freq = args.min_freq
 
     analyzer = Analyzer(args.input, args.output, args.start, args.end, args.date, args.lat, args.lon, args.debug)
     analyzer.run(start_time)
