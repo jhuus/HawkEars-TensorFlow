@@ -121,7 +121,7 @@ class Frequency_DB:
 
             species_id, compressed = result
             bytes = zlib.decompress(compressed)
-            values = np.frombuffer(bytes, dtype=np.uint8) / (4 * 255)
+            values = np.frombuffer(bytes, dtype=np.float16)
             values = values.astype(np.float32)
 
             results = []
@@ -148,11 +148,9 @@ class Frequency_DB:
     def insert_frequencies(self, county_id, species_id, value):
         try:
             # value is a numpy array of 48 floats (a frequency per week, four weeks/month);
-            # convert it to a byte array and zip that to keep the database small
-            value = np.minimum(value, 0.25) * 4.0 # increase granularity at the cost of losing values > 0.25
-            value = value * 255
-            np_bytes = value.astype(np.uint8)
-            bytes = np_bytes.tobytes()
+            # convert it to a float16 array and zip that to keep the database small
+            reduced = value.astype(np.float16)
+            bytes = reduced.tobytes()
             compressed = zlib.compress(bytes)
 
             query = '''
