@@ -30,7 +30,7 @@ class Spectrogram:
         self.offset = offset
 
 class Main:
-    def __init__(self, source, category, code, root, dbname, input_path, spec_type, subcategory, target_dir):
+    def __init__(self, source, category, code, root, dbname, input_path, subcategory, target_dir):
         self.db = database.Database(filename=f'../data/{dbname}.db')
         self.audio = audio.Audio(path_prefix='../')
 
@@ -40,7 +40,6 @@ class Main:
         self.root = root
         self.dbname = dbname
         self.input_path = input_path
-        self.spec_type = spec_type
         self.subcategory = subcategory
         self.target_dir = target_dir
 
@@ -72,12 +71,13 @@ class Main:
         filename = os.path.basename(path)
         index = filename.rfind('.')
         prefix = filename[:index]
-        url = ''
         source_id = self._get_source_id(prefix)
 
-        recording_id = self.db.get_recording_id(source_id, self.subcategory_id, filename)
-        if recording_id is None:
-            recording_id = self.db.insert_recording(source_id, self.subcategory_id, url, filename, seconds)
+        results = self.db.get_recording_by_src_subcat_file(source_id, self.subcategory_id, filename)
+        if len(results) == 0:
+            recording_id = self.db.insert_recording(source_id, self.subcategory_id, filename, seconds)
+        else:
+            recording_id = results[0].id
 
         raw_specs = self.audio.get_spectrograms(offsets)
         for i in range(len(offsets)):
@@ -108,26 +108,30 @@ class Main:
             if not spec.spec is None:
                 # convert to bytes, zip it and insert in database
                 compressed = util.compress_spectrogram(spec.spec)
-                self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset, self.spec_type)
+                self.db.insert_spectrogram(spec.recording_id, compressed, spec.offset)
                 inserted += 1
 
         print(f'inserted {inserted} spectrograms')
 
     def _init_database(self):
         if self.source is not None:
-            self.source_id = self.db.get_source_by_name(self.source)
-            if self.source_id is None:
+            results = self.db.get_source('Name', self.source)
+            if len(results) == 0:
                 self.source_id = self.db.insert_source(self.source)
+            else:
+                self.source_id = results[0].id                
 
-        self.category_id = self.db.get_category_by_name(self.category)
-        if self.category_id is None:
+        results = self.db.get_category('Name', self.category)
+        if len(results) == 0:
             self.category_id = self.db.insert_category(self.category)
+        else:
+            self.category_id = results[0].id            
 
-        result = self.db.get_subcategory(self.category_id, self.subcategory)
-        if result is None:
+        results = self.db.get_subcategory_by_catid_and_subcat_name(self.category_id, self.subcategory)
+        if len(results) == 0:
             self.subcategory_id = self.db.insert_subcategory(self.category_id, self.subcategory, code=self.code)
         else:
-            (self.subcategory_id, _) = result
+            self.subcategory_id = results[0].id
 
     # read file containing spec info and update self.offsets_dict
     def _process_specs_file(self, specs_file_path):
@@ -174,11 +178,10 @@ class Main:
     def run(self):
         self._init_database()
 
-        results = self.db.get_all_sources()
+        results = self.db.get_source()
         self.source_ids = {} # source ID per name
-        for result in results:
-            id, name = result
-            self.source_ids[name] = id
+        for r in results:
+            self.source_ids[r.name] = r.id
 
         # get label/specs info unless we're generating labels
         self.offsets_dict = {}
@@ -211,14 +214,13 @@ if __name__ == '__main__':
     parser.add_argument('-d', type=str, default='', help='Directory containing the audio files.')
     parser.add_argument('-f', type=str, default='training', help='Database name. Default = training')
     parser.add_argument('-i', type=str, default='', help='Input text file or image directory')
-    parser.add_argument('-r', type=str, default='', help='Spectrogram type, e.g. chip or tink.')
     parser.add_argument('-s', type=str, default='', help='Subcategory (e.g. "Baltimore Oriole").')
     parser.add_argument('-t', type=str, default='/home/jhuus/data/bird', help='Copy used audio files to a "bird code" directory under this, if specified')
 
     args = parser.parse_args()
     start_time = time.time()
 
-    Main(args.a, args.b, args.c, args.d, args.f, args.i, args.r, args.s, args.t).run()
+    Main(args.a, args.b, args.c, args.d, args.f, args.i, args.s, args.t).run()
 
     elapsed = time.time() - start_time
     print(f'elapsed seconds = {elapsed:.3f}')
