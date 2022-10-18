@@ -40,10 +40,10 @@ class DataGenerator():
         self.indices = np.arange(len(x_train))
 
         # get some noise spectrograms from the database
-        results = db.get_spectrograms_by_name('Denoiser')
+        results = db.get_spectrogram_by_subcat_name('Denoiser')
         self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
-        for i in range(len(self.real_noise)):
-            self.real_noise[i] = util.expand_spectrogram(results[i][0])
+        for i, r in enumerate(results):
+            self.real_noise[i] = util.expand_spectrogram(r.value)
 
         # create some artificial noise
         self.noise = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
@@ -99,10 +99,10 @@ def cos_lr_schedule(epoch):
 # return spectrograms for the given class, filtered to remove some with the most pixels,
 # which are likely noisy
 def get_spectrograms(db, name):
-    specs = db.get_spectrograms_by_name(name)
+    results = db.get_spectrogram_by_subcat_name(name)
     spec_list = []
-    for spec in specs:
-        curr = util.expand_spectrogram(spec[0])
+    for r in results:
+        curr = util.expand_spectrogram(r.value)
         curr = remove_noise(curr)
         spec_list.append((curr, len(curr[curr > 0.05])))
 
