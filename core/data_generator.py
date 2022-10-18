@@ -61,10 +61,10 @@ class DataGenerator():
                     self.pink_noise[i] = self.audio.pink_noise() + self.white_noise[i]
 
                 # get some noise spectrograms from the database
-                results = db.get_spectrograms_by_name('Denoiser')
+                results = db.get_spectrogram_by_subcat_name('Denoiser')
                 self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
-                for i in range(len(self.real_noise)):
-                    self.real_noise[i] = util.expand_spectrogram(results[i][0])
+                for i, r in enumerate(results):
+                    self.real_noise[i] = util.expand_spectrogram(r.value)
 
             self.speckle = np.zeros((CACHE_LEN, self.spec_height, cfg.spec_width, 1))
             for i in range(CACHE_LEN):
