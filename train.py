@@ -150,7 +150,7 @@ class Trainer:
                 if not cfg.multi_label:
                     text_output.write(f'Training accuracy: {training_accuracy:.3f}\n')
 
-                if len(self.x_test) > 0:
+                if cfg.verbosity >= 2 and len(self.x_test) > 0:
                     text_output.write(f'Test loss: {scores[0]:.3f}\n')
                     text_output.write(f'Final test accuracy: {test_accuracy:.3f}\n')
                     text_output.write(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
@@ -263,7 +263,7 @@ class Trainer:
         num_specs = {}
         sum = 0
         for class_name in self.classes:
-            count = float(self.db.get_num_spectrograms(class_name))
+            count = float(self.db.get_spectrogram_count(class_name))
             num_specs[class_name] = count
             sum += count
 
@@ -288,7 +288,7 @@ class Trainer:
         num_spectrograms = []
         self.test_indices = []
         for i in range(len(self.classes)):
-            total = self.db.get_num_spectrograms(self.classes[i])
+            total = self.db.get_spectrogram_count(self.classes[i])
             num_spectrograms.append(total)
             self.test_indices.append(self.get_test_indices(total))
 
@@ -312,7 +312,7 @@ class Trainer:
                 validation_db = database.Database(f'data/{val_name}.db')
                 num_validation_specs = 0
                 for class_name in self.classes:
-                    test_total += validation_db.get_num_spectrograms(class_name)
+                    test_total += validation_db.get_spectrogram_count(class_name)
 
         print(f'# training samples: {train_total}, # test samples: {test_total}')
 
@@ -333,23 +333,20 @@ class Trainer:
         test_index = 0
 
         for i in range(len(self.classes)):
-            results = self.db.get_recordings_by_subcategory_name(self.classes[i])
+            results = self.db.get_recording_by_subcat_name(self.classes[i])
             spec_index = 0
-            for result in results:
-                recording_id, file_name, _ = result
-                specs = self.db.get_spectrograms_by_recording_id(recording_id)
-
-                for j in range(len(specs)):
-                    spec, offset, _ = specs[j]
+            for r in results:
+                results2 = self.db.get_spectrogram('RecordingID', r.id)
+                for r2 in results2:
                     if spec_index in self.test_indices[i].keys():
                         # test spectrograms are expanded here
-                        self.spec_file_name[test_index] = f'{file_name}-{offset}' # will be used in names of files written to misident folder
-                        self.x_test[test_index] = util.expand_spectrogram(spec, low_noise_detector=cfg.low_noise_detector)
+                        self.spec_file_name[test_index] = f'{r.filename}-{r2.offset}' # will be used in names of files written to misident folder
+                        self.x_test[test_index] = util.expand_spectrogram(r2.value, low_noise_detector=cfg.low_noise_detector)
                         self.y_test[test_index][i] = 1
                         test_index += 1
                     else:
                         # training spectrograms are expanded in data generator
-                        self.x_train[train_index] = spec
+                        self.x_train[train_index] = r2.value
                         self.train_class[train_index] = self.classes[i]
                         self.y_train[train_index][i] = 1
                         train_index += 1
@@ -362,9 +359,9 @@ class Trainer:
             for val_name in val_names:
                 validation_db = database.Database(f'data/{val_name}.db')
                 for i in range(len(self.classes)):
-                    specs = validation_db.get_spectrograms_by_name(self.classes[i])
-                    for spec in specs:
-                        self.x_test[test_index] = util.expand_spectrogram(spec[0], low_noise_detector=cfg.low_noise_detector)
+                    results = validation_db.get_spectrogram_by_subcat_name(self.classes[i])
+                    for r in results:
+                        self.x_test[test_index] = util.expand_spectrogram(r.value, low_noise_detector=cfg.low_noise_detector)
                         self.y_test[test_index][i] = 1
                         test_index += 1
 
