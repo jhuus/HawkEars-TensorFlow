@@ -48,20 +48,19 @@ if not os.path.exists(out_dir):
 db = database.Database(f'../data/{db_name}.db')
 
 start_time = time.time()
-results = db.get_spectrogram_details_by_name(species_name)
+results = db.get_spectrogram_by_subcat_name(species_name)
 print(f'retrieved {len(results)} spectrograms from database')
 num_plotted = 0
-for result in results:
-    filename, offset, spec, _ = result
-    if len(prefix) > 0 and not filename.lower().startswith(prefix):
+for r in results:
+    if len(prefix) > 0 and not r.filename.lower().startswith(prefix):
         continue
 
-    base, ext = os.path.splitext(filename)
-    spec_path = f'{out_dir}/{base}-{offset:.2f}.png'
+    base, ext = os.path.splitext(r.filename)
+    spec_path = f'{out_dir}/{base}-{r.offset:.2f}.png'
 
     if overwrite or not os.path.exists(spec_path):
         print(f"Processing {spec_path}")
-        spec = util.expand_spectrogram(spec, low_noise_detector=low_noise_detector)
+        spec = util.expand_spectrogram(r.value, low_noise_detector=low_noise_detector)
         if center:
             spec = util.center_spec(spec)
 
