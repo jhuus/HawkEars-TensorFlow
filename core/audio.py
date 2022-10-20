@@ -268,8 +268,8 @@ class Audio:
             # convert byte array to float array, and then to a numpy array
             scale = 1.0 / float(1 << ((16) - 1))
             fmt = "<i{:d}".format(2)
-            floats = scale * np.frombuffer(bytes, fmt).astype(np.float32)
-            self.signal = np.asarray(floats)
+
+            self.signal = scale * np.frombuffer(bytes, fmt).astype(np.float32)
             self.have_signal = True
             if cfg.bandpass_filter:
                 self.filtered_signal = self._apply_bandpass_filter(self.signal)
