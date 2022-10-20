@@ -67,7 +67,7 @@ def expand_spectrogram(spec, low_noise_detector=False, reshape=True):
 def get_audio_files(path):
     files = []
     if os.path.isdir(path):
-        for file_name in os.listdir(path):
+        for file_name in sorted(os.listdir(path)):
             file_path = os.path.join(path, file_name)
             if os.path.isfile(file_path):
                 base, ext = os.path.splitext(file_path)
