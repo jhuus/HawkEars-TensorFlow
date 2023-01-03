@@ -94,9 +94,9 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database close: {e}')
 
-# ------------------------------- #            
+# ------------------------------- #
 # Source
-# ------------------------------- #          
+# ------------------------------- #
 
     def insert_source(self, name):
         try:
@@ -147,9 +147,9 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database get_source: {e}')
 
-# ------------------------------- #            
+# ------------------------------- #
 # Category
-# ------------------------------- #          
+# ------------------------------- #
 
     def insert_category(self, name):
         try:
@@ -200,9 +200,9 @@ class Database:
             print(f'Error in database get_category: {e}')
 
 
-# ------------------------------- #            
+# ------------------------------- #
 # Subcategory
-# ------------------------------- #          
+# ------------------------------- #
 
     def insert_subcategory(self, category_id, name, synonym='', code=''):
         try:
@@ -256,7 +256,7 @@ class Database:
         try:
             query = f'''
                 SELECT ID, CategoryID, Name, Synonym, Code FROM Subcategory
-                WHERE CategoryID = "{category_id}" AND Name = "{name}" 
+                WHERE CategoryID = "{category_id}" AND Name = "{name}"
                 ORDER BY ID
             '''
             cursor = self.conn.cursor()
@@ -276,9 +276,9 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database get_subcategory_by_catid_and_subcat_name: {e}')
 
-# ------------------------------- #            
+# ------------------------------- #
 # Recording
-# ------------------------------- #          
+# ------------------------------- #
 
     def insert_recording(self, source_id, subcategory_id, filename, seconds=0):
         try:
@@ -390,9 +390,9 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database get_recording_by_src_subcat_file: {e}')
 
-# ------------------------------- #            
+# ------------------------------- #
 # Spectrogram
-# ------------------------------- #          
+# ------------------------------- #
 
     def insert_spectrogram(self, recording_id, value, offset, embedding=None):
         try:
@@ -427,9 +427,15 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database delete_spectrogram_by_subcat_name: {e}')
 
-    def get_spectrogram(self, field=None, value=None):
+    def get_spectrogram(self, field=None, value=None, include_audio=False, include_embedding=False):
         try:
-            query = f'SELECT ID, RecordingID, Value, Offset, Audio, Embedding FROM Spectrogram'
+            fields = 'ID, RecordingID, Value, Offset'
+            if include_audio:
+                fields += ', Audio'
+            if include_embedding:
+                fields += ', Embedding'
+
+            query = f'SELECT {fields} FROM Spectrogram'
             if field is not None:
                 query += f' WHERE {field} = "{value}"'
 
@@ -443,7 +449,20 @@ class Database:
 
             results = []
             for row in rows:
-                id, recordingID, value, offset, audio, embedding = row
+                id, recordingID, value, offset = row[:4]
+                if include_audio:
+                    audio = row[4]
+                    if include_embedding:
+                        embedding = row[5]
+                    else:
+                        embedding = None
+                elif include_embedding:
+                    audio = None
+                    embedding = row[4]
+                else:
+                    audio = None
+                    embedding = None
+
                 result = SimpleNamespace(id=id, recording_id=recordingID, value=value, offset=offset, audio=audio, embedding=embedding)
                 results.append(result)
 
@@ -452,10 +471,16 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database get_spectrogram: {e}')
 
-    def get_spectrogram_by_recid_and_offset(self, recording_id, offset):
+    def get_spectrogram_by_recid_and_offset(self, recording_id, offset, include_audio=False, include_embedding=False):
         try:
+            fields = 'ID, RecordingID, Value, Offset'
+            if include_audio:
+                fields += ', Audio'
+            if include_embedding:
+                fields += ', Embedding'
+
             query = f'''
-                SELECT ID, RecordingID, Value, Offset, Audio, Embedding FROM Spectrogram
+                SELECT {fields} FROM Spectrogram
                 WHERE RecordingID = {recording_id}
                 AND Offset > {offset - .01}
                 AND Offset < {offset + .01}
@@ -464,20 +489,40 @@ class Database:
             cursor = self.conn.cursor()
             cursor.execute(query)
             rows = cursor.fetchall()
-            if rows is None:
-                return []
+            if rows is None or len(rows) == 0:
+                return None
 
-            id, recordingID, value, offset, audio, embedding = rows[0]
+            row = rows[0]
+            id, recordingID, value, offset = row[:4]
+            if include_audio:
+                audio = row[4]
+                if include_embedding:
+                    embedding = row[5]
+                else:
+                    embedding = None
+            elif include_embedding:
+                audio = None
+                embedding = row[4]
+            else:
+                audio = None
+                embedding = None
+
             result = SimpleNamespace(id=id, recording_id=recordingID, value=value, offset=offset, audio=audio, embedding=embedding)
             return result
 
         except sqlite3.Error as e:
             print(f'Error in database get_spectrogram_by_recid_and_offset: {e}')
 
-    def get_spectrogram_by_subcat_name(self, subcategory_name):
+    def get_spectrogram_by_subcat_name(self, subcategory_name, include_audio=False, include_embedding=False):
         try:
+            fields = 'Spectrogram.ID, RecordingID, Recording.FileName, Value, Offset'
+            if include_audio:
+                fields += ', Audio'
+            if include_embedding:
+                fields += ', Embedding'
+
             query = f'''
-                SELECT Spectrogram.ID, RecordingID, Recording.FileName, Value, Offset, Audio, Embedding FROM Spectrogram
+                SELECT {fields} FROM Spectrogram
                 INNER JOIN Recording ON RecordingID = Recording.ID
                 WHERE RecordingID IN
                     (SELECT ID FROM Recording WHERE SubcategoryID IN
@@ -491,7 +536,20 @@ class Database:
 
             results = []
             for row in rows:
-                id, recordingID, filename, value, offset, audio, embedding = row
+                id, recordingID, filename, value, offset = row[:5]
+                if include_audio:
+                    audio = row[5]
+                    if include_embedding:
+                        embedding = row[6]
+                    else:
+                        embedding = None
+                elif include_embedding:
+                    audio = None
+                    embedding = row[5]
+                else:
+                    audio = None
+                    embedding = None
+
                 result = SimpleNamespace(id=id, recording_id=recordingID, filename=filename, value=value, offset=offset, audio=audio, embedding=embedding)
                 results.append(result)
 
