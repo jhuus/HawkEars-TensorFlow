@@ -1,4 +1,3 @@
-
 # Audio processing, especially extracting and returning spectrograms.
 
 import logging
@@ -13,17 +12,14 @@ import tensorflow as tf
 
 from . import low_noise_detector
 from core import config as cfg
+from core import plot
 
 class Audio:
     def __init__(self, path_prefix=''):
         self.have_signal = False
         self.signal = None
-        self.low_noise_detector = low_noise_detector.LowNoiseDetector(path_prefix)
-
-    def _apply_bandpass_filter(self, sig):
-        window = np.array([cfg.filter_min_freq, cfg.filter_max_freq]) / (cfg.sampling_rate / 2.0)
-        filter_sos = scipy.signal.butter(cfg.filter_order, window, btype='bandpass', output='sos')
-        return scipy.signal.sosfiltfilt(filter_sos, sig)
+        self.path_prefix = path_prefix
+        self.low_noise_detector = None
 
     # width of spectrogram is determined by input signal length, and height = cfg.spec_height
     def _get_raw_spectrogram(self, signal):
@@ -82,18 +78,19 @@ class Audio:
     # use a neural net to identify low frequency noise;
     # if found, attenuate it to bring out other sounds
     def _dampen_low_noise(self, specs):
-        is_noise, high_max = self.low_noise_detector.check_for_noise(specs)
+        if self.low_noise_detector is None:
+            self.low_noise_detector = low_noise_detector.LowNoiseDetector(self.path_prefix)
+
+        is_noise = self.low_noise_detector.check_for_noise(specs)
 
         for i in range(len(specs)):
             if is_noise[i]:
                 # there are loud sounds in the low frequencies, and it's noise;
-                # dampen it so quieter high frequency sounds don't disappear during normalization
-                for row in range(cfg.lnd_high_idx):
+                # dampen it so quieter high frequency sounds don't disappear during normalization;
+                # i.e. apply a very simple sort of high-pass filter heuristic
+                for row in range(cfg.lnd_spec_height):
                     row_max = np.max(specs[i][row:row+1,:])
-                    if row_max > high_max[i]:
-                        # after this, the loudest low frequency sound will be as loud as the loudest high frequency sound,
-                        # and quieter low frequency sounds are affected less
-                        specs[i][row:row+1,:] = (specs[i][row:row+1,:] ** 0.5) * (high_max[i] / (row_max ** 0.5))
+                    specs[i][row:row+1,:] *= row / cfg.lnd_spec_height
 
     # look for a sound in the given frequency (height) range, in the first segment of the spec;
     # if found, return the starting offset in seconds
@@ -194,14 +191,13 @@ class Audio:
 
     # return list of spectrograms for the given offsets (i.e. starting points in seconds);
     # you have to call load() before calling this
-    def get_spectrograms(self, offsets, seconds=cfg.segment_len, multi_spec=False, filter=False, dampen_low_noise=False, low_noise_detector=False):
+    def get_spectrograms(self, offsets, seconds=cfg.segment_len, multi_spec=False, dampen_low_noise=False, low_noise_detector=False):
         if not self.have_signal:
             return None
 
-        signal = self.filtered_signal if filter else self.signal
         if multi_spec:
             # call _get_raw_spectrogram separately per offset, which is faster when just getting a few spectrograms from a large recording
-            specs = self._get_spectrograms_multi_spec(signal, offsets)
+            specs = self._get_spectrograms_multi_spec(self.signal, offsets)
         else:
             # call _get_raw_spectrogram for the whole signal, then break it up into spectrograms;
             # this is faster when getting overlapping spectrograms for a whole recording
@@ -212,10 +208,10 @@ class Audio:
             block_length = cfg.spec_block_seconds * cfg.sampling_rate
             spec_width_per_sec
             i = 0
-            while start < len(signal):
+            while start < len(self.signal):
                 i += 1
-                length = min(block_length, len(signal) - start)
-                block = self._get_raw_spectrogram(signal[start:start+length])
+                length = min(block_length, len(self.signal) - start)
+                block = self._get_raw_spectrogram(self.signal[start:start+length])
                 if spectrogram is None:
                     spectrogram = block
                 else:
@@ -253,7 +249,7 @@ class Audio:
     def signal_len(self):
         return len(self.signal) if self.have_signal else 0
 
-    def load(self, path):
+    def load(self, path, keep_bytes=False):
         self.have_signal = False
         self.signal = None
         spectrogram = None
@@ -267,12 +263,12 @@ class Audio:
 
             # convert byte array to float array, and then to a numpy array
             scale = 1.0 / float(1 << ((16) - 1))
-            fmt = "<i{:d}".format(2)
-
-            self.signal = scale * np.frombuffer(bytes, fmt).astype(np.float32)
+            self.signal = scale * np.frombuffer(bytes, '<i2').astype(np.float32)
             self.have_signal = True
-            if cfg.bandpass_filter:
-                self.filtered_signal = self._apply_bandpass_filter(self.signal)
+
+            if keep_bytes:
+                self.bytes = bytes # when we want the raw audio, e.g. to write a segment to a wav file
+
         except ffmpeg.Error as e:
             tokens = e.stderr.decode().split('\n')
             if len(tokens) >= 2:
@@ -280,5 +276,5 @@ class Audio:
             else:
                 print(f'Caught exception in audio load')
 
-        logging.info('Done loading audio file')
+        logging.debug('Done loading audio file')
         return self.signal, cfg.sampling_rate
