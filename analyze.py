@@ -10,7 +10,6 @@ import sys
 import time
 import warnings
 
-warnings.filterwarnings('ignore') # suppress librosa warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' # 1 = no info, 2 = no warnings, 3 = no errors
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 
@@ -30,6 +29,7 @@ class ClassInfo:
         self.code = code
         self.ignore = ignore
         self.frequency_too_low = False
+        self.max_frequency = 0
         self.reset()
 
     def reset(self):
@@ -78,19 +78,17 @@ class Analyzer:
 
     # process latitude, longitude and date
     def _process_lat_lon_date(self):
-        if self.latitude is None and self.longitude is None and self.date_str is None:
+        if self.latitude is None or self.longitude is None:
             self.check_frequency = False
             return
 
         self.check_frequency = True
-        if self.latitude is None or self.longitude is None or self.date_str is None:
-            logging.error(f'Error: if latitude, longitude or date are specified, all three must be specified')
-            quit()
+        self.get_date_from_file_name = False
+        self.week_num = None
 
         if self.date_str == 'file':
             self.get_date_from_file_name = True
-        else:
-            self.get_date_from_file_name = False
+        elif self.date_str is not None:
             self.week_num = self._get_week_num_from_date_str(self.date_str)
             if self.week_num is None:
                 logging.error(f'Error: invalid date string: {self.date_str}')
@@ -111,12 +109,45 @@ class Analyzer:
         else:
             logging.info(f'Matching species in {county.name} ({county.code})')
 
-        for class_info in self.class_infos:
-            if not class_info.ignore:
-                results = freq_db.get_frequencies(county.id, class_info.name)
-                class_info.frequency_dict = {}
+        # get the weekly frequency data per species
+        class_infos = {}
+        for peer_class_info in self.class_infos:
+            class_infos[peer_class_info.name] = peer_class_info
+            if not peer_class_info.ignore:
+                results = freq_db.get_frequencies(county.id, peer_class_info.name)
+                peer_class_info.frequency_dict = {}
+                peer_class_info.max_frequency = 0
                 for result in results:
-                    class_info.frequency_dict[result.week_num] = result.value
+                    peer_class_info.max_frequency = max(peer_class_info.max_frequency, result.value)
+                    peer_class_info.frequency_dict[result.week_num] = result.value
+
+        # process soundalikes (see comments in config.py);
+        # start by identifying soundalikes at or below the cutoff frequency
+        low_freq_soundalikes = {}
+        for set in cfg.soundalikes:
+            for i in range(len(set)):
+                if set[i] in class_infos and class_infos[set[i]].max_frequency <= cfg.soundalike_cutoff:
+                    low_freq_soundalikes[set[i]] = []
+                    for j in range(len(set)):
+                        if i != j and set[j] in class_infos:
+                            low_freq_soundalikes[set[i]].append(set[j])
+
+        # for each soundalike below the low frequency cutoff, find its highest peer above the cutoff
+        for name in low_freq_soundalikes:
+            max_peer_class_info = None
+            for peer_name in low_freq_soundalikes[name]:
+                peer_class_info = class_infos[peer_name]
+                if peer_class_info.max_frequency > cfg.soundalike_cutoff:
+                    if max_peer_class_info is None or peer_class_info.max_frequency > max_peer_class_info.max_frequency:
+                        max_peer_class_info = peer_class_info
+
+            if max_peer_class_info is not None:
+                # replace the low freq one by a soundalike
+                class_info = class_infos[name]
+                class_info.name = max_peer_class_info.name
+                class_info.code = max_peer_class_info.code
+                class_info.frequency_dict = max_peer_class_info.frequency_dict
+                class_info.max_frequency = max_peer_class_info.max_frequency
 
     # return week number in the range [1, 48] as used by eBird barcharts, i.e. 4 weeks per month
     def _get_week_num_from_date_str(self, date_str):
@@ -190,34 +221,29 @@ class Analyzer:
         else:
             end_seconds = self.end_seconds
 
-        specs = self._get_specs(start_seconds, end_seconds, filter=False, dampen_low_noise=True)
-        if cfg.bandpass_filter:
-            filtered_specs = self._get_specs(start_seconds, end_seconds, filter=True, dampen_low_noise=False)
-        else:
-            filtered_specs = None
+        specs = self._get_specs(start_seconds, end_seconds)
+        logging.debug('Done creating spectrograms')
 
-        logging.info('Done creating spectrograms')
+        if len(specs) == 0:
+            logging.info('No spectrograms found')
+            return
 
-        predictions = self.model.predict(specs)
-        if cfg.bandpass_filter:
-            filtered_predictions = self.model.predict(filtered_specs)
+        predictions = self.model.predict(specs, verbose=0)
 
         if self.debug_mode:
-            self._log_predictions(predictions, filtered_predictions)
+            self._log_predictions(predictions)
 
-        # populate class_infos with predictions, using the max with and without bandpass filter
+        # populate class_infos with predictions
         for i in range(len(self.offsets)):
             for j in range(len(self.class_infos)):
-                    value = max(predictions[i][j], filtered_predictions[i][j]) if cfg.bandpass_filter else predictions[i][j]
-                    self.class_infos[j].probs.append(value)
+                    self.class_infos[j].probs.append(predictions[i][j])
                     if (self.class_infos[j].probs[-1] >= cfg.min_prob):
                         self.class_infos[j].has_label = True
 
     # get the list of spectrograms
-    def _get_specs(self, start_seconds, end_seconds, filter, dampen_low_noise):
+    def _get_specs(self, start_seconds, end_seconds):
         self.offsets = np.arange(start_seconds, end_seconds + 1.0, 1.0).tolist()
-        specs = self.audio.get_spectrograms(self.offsets, filter=filter, dampen_low_noise=dampen_low_noise)
-
+        specs = self.audio.get_spectrograms(self.offsets, dampen_low_noise=cfg.dampen_low_noise)
         spec_array = np.zeros((len(specs), cfg.spec_height, cfg.spec_width, 1))
         for i in range(len(specs)):
             spec_array[i] = specs[i].reshape((cfg.spec_height, cfg.spec_width, 1)).astype(np.float32)
@@ -243,7 +269,10 @@ class Analyzer:
         for class_info in self.class_infos:
             class_info.reset()
             if check_frequency and not class_info.ignore:
-                if not self.week_num in class_info.frequency_dict or class_info.frequency_dict[self.week_num] < cfg.min_freq:
+                if self.week_num is None and not self.get_date_from_file_name:
+                    if class_info.max_frequency < cfg.min_freq:
+                        class_info.frequency_too_low = True
+                elif not self.week_num in class_info.frequency_dict or class_info.frequency_dict[self.week_num] < cfg.min_freq:
                     class_info.frequency_too_low = True
 
         signal, rate = self.audio.load(file_path)
@@ -299,8 +328,8 @@ class Analyzer:
 
     def _save_labels(self, labels, file_path):
         basename = os.path.basename(file_path)
-        tokens = basename.split('.')
-        output_path = os.path.join(self.output_path, f'{tokens[0]}_HawkEars_Audacity_Labels.txt')
+        name, ext = os.path.splitext(basename)
+        output_path = os.path.join(self.output_path, f'{name}_HawkEars_Audacity_Labels.txt')
         logging.info(f'Writing output to {output_path}')
         try:
             with open(output_path, 'w') as file:
@@ -312,7 +341,7 @@ class Analyzer:
             sys.exit()
 
     # in debug mode, output the top predictions
-    def _log_predictions(self, predictions, filtered_predictions):
+    def _log_predictions(self, predictions):
         predictions = np.copy(predictions[0])
         print("\ntop predictions")
         for i in range(cfg.top_n):
@@ -321,15 +350,6 @@ class Analyzer:
             confidence = predictions[j]
             print(f"{code}: {confidence}")
             predictions[j] = 0
-
-        if cfg.bandpass_filter:
-            print("\ntop predictions on filtered audio")
-            for i in range(cfg.top_n):
-                j = np.argmax(filtered_predictions)
-                code = self.class_infos[j].code
-                confidence = filtered_predictions[j]
-                print(f"{code}: {confidence}")
-                filtered_predictions[j] = 0
 
         print("")
 
