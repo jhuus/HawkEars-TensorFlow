@@ -92,6 +92,7 @@ class Main:
         audio_files = util.get_audio_files(self.root)
         specs = []
         raw_specs = []
+        print(f'Found {len(audio_files)} audio files in {self.root}')
         for audio_file in audio_files:
             filename = os.path.basename(audio_file)
             print(f'processing {filename}')
@@ -119,13 +120,13 @@ class Main:
             if len(results) == 0:
                 self.source_id = self.db.insert_source(self.source)
             else:
-                self.source_id = results[0].id                
+                self.source_id = results[0].id
 
         results = self.db.get_category('Name', self.category)
         if len(results) == 0:
             self.category_id = self.db.insert_category(self.category)
         else:
-            self.category_id = results[0].id            
+            self.category_id = results[0].id
 
         results = self.db.get_subcategory_by_catid_and_subcat_name(self.category_id, self.subcategory)
         if len(results) == 0:
@@ -196,6 +197,7 @@ class Main:
         else:
             # input path must point to a directory of images
             file_list = os.listdir(self.input_path)
+            print(f'Found {len(file_list)} files in {self.input_path}')
             for file_name in file_list:
                 base, ext = os.path.splitext(file_name)
                 if ext == '.png':
