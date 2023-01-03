@@ -54,14 +54,15 @@ class DataGenerator():
                 self.white_noise = np.zeros((CACHE_LEN, self.spec_height, cfg.spec_width, 1))
                 for i in range(CACHE_LEN):
                     self.white_noise[i] = skimage.util.random_noise(self.white_noise[i], mode='gaussian', seed=cfg.seed, var=cfg.noise_variance, clip=True)
+                    self.white_noise[i] /= np.max(self.white_noise[i]) # scale so max value is 1
 
                 # create some pink noise
                 self.pink_noise = np.zeros((CACHE_LEN, self.spec_height, cfg.spec_width, 1))
                 for i in range(CACHE_LEN):
-                    self.pink_noise[i] = self.audio.pink_noise() + self.white_noise[i]
+                    self.pink_noise[i] = self.audio.pink_noise()
 
                 # get some noise spectrograms from the database
-                results = db.get_spectrogram_by_subcat_name('Denoiser')
+                results = db.get_spectrogram_by_subcat_name('Noise')
                 self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
                 for i, r in enumerate(results):
                     self.real_noise[i] = util.expand_spectrogram(r.value)
@@ -94,15 +95,18 @@ class DataGenerator():
                     elif prob < self.probs[FADE_INDEX]:
                         spec = self._fade(spec)
                     elif prob < self.probs[WHITE_NOISE_INDEX]:
-                        spec = self._add_white_noise(spec)
+                        spec = self._add_noise(spec, self.white_noise)
                     elif prob < self.probs[PINK_NOISE_INDEX]:
-                        spec = self._add_pink_noise(spec)
+                        spec = self._add_noise(spec, self.pink_noise)
                     elif prob < self.probs[REAL_NOISE_INDEX]:
-                        spec = self._add_real_noise(spec)
+                        spec = self._add_noise(spec, self.real_noise)
                     elif prob < self.probs[SHIFT_INDEX]:
                         spec = self._shift_horizontal(spec)
                     else:
                         spec = self._speckle(spec)
+
+            # reduce values slightly
+            spec *= random.uniform(cfg.min_mult, cfg.max_mult)
 
             yield (spec.astype(np.float32), label)
 
@@ -122,29 +126,13 @@ class DataGenerator():
         label += self.y_train[other_id].astype(np.float32)
         return spec, label
 
-    # add white noise to the spectrogram
-    def _add_white_noise(self, spec):
-        index = random.randint(0, CACHE_LEN - 1)
-        spec += self.white_noise[index]
-        spec = spec.clip(0, 1)
-        return spec
-
-    # add low frequency noise to the spectrogram
-    def _add_pink_noise(self, spec):
-        index = random.randint(0, CACHE_LEN - 1)
-        noise_mult = random.uniform(cfg.pink_noise_min, cfg.pink_noise_max) # > 0 causes original spectrogram to fade accordingly
-        spec += self.pink_noise[index] * noise_mult
+    # add noise to the spectrogram
+    def _add_noise(self, spec, noise):
+        index = random.randint(0, len(noise) - 1)
+        spec = spec + noise[index] * random.uniform(cfg.noise_min, cfg.noise_max)
         spec /= np.max(spec)
         spec = spec.clip(0, 1)
-        return spec
 
-    # add real noise to the spectrogram
-    def _add_real_noise(self, spec):
-        index = random.randint(0, len(self.real_noise) - 1)
-        noise_mult = random.uniform(cfg.real_noise_min, cfg.real_noise_max)
-        spec += self.real_noise[index] * noise_mult
-        spec /= np.max(spec)
-        spec = spec.clip(0, 1)
         return spec
 
     # blur the spectrogram (larger values of sigma lead to more blurring)
