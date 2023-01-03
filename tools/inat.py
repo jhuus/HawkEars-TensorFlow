@@ -6,15 +6,16 @@ import pyinaturalist
 import requests
 
 class Main:
-    def __init__(self, species_name, output_path, max_downloads, rename):
+    def __init__(self, species_name, output_path, max_downloads, rename, min_rec_number):
         self.species_name = species_name
         self.output_path = output_path
         self.max_downloads = max_downloads
         self.rename = rename
-        
+        self.min_rec_number = min_rec_number
+
         if len(self.species_name) == 0:
             self._fatal_error("Species name must be specified.")
-        
+
         if len(self.output_path) == 0:
             self._fatal_error("Output path must be specified.")
 
@@ -47,6 +48,14 @@ class Main:
             open(output_path, 'wb').write(r.content)
             self.num_downloads += 1
 
+        return base
+
+    def get_recording_number(self, url):
+        tokens = url.split('/')
+        tokens = tokens[-1].split('?')
+        tokens = tokens[0].split('.')
+        return int(tokens[0])
+
     def run(self):
         if not os.path.exists(self.output_path):
             try:
@@ -56,19 +65,38 @@ class Main:
 
         self.num_downloads = 0
         response = pyinaturalist.get_observations(taxon_name=f'{self.species_name}', sounds=True, per_page=self.max_downloads)
+        id_map = {} # map media IDs to observation IDs
         for result in response['results']:
+            if result['species_guess'] != self.species_name:
+                continue
+
             for sound in result['sounds']:
-                self._download(sound['file_url'])
+                if sound['file_url'] is None:
+                    continue
+
+                rec_number = self.get_recording_number(sound['file_url'])
+                if self.min_rec_number is not None and rec_number < self.min_rec_number:
+                    continue
+
+                media_id = self._download(sound['file_url'])
+                if media_id is not None and result['id'] is not None:
+                    id_map[media_id] = result['id']
+
+        csv_path = os.path.join(self.output_path, 'inat.csv')
+        with open(csv_path, 'w') as csv_file:
+            csv_file.write('Media ID,URL\n')
+            for key in sorted(id_map.keys()):
+                csv_file.write(f'{key},https://www.inaturalist.org/observations/{id_map[key]}\n')
 
 if __name__ == '__main__':
     # command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', type=str, default='', help='Path to output directory.')
+    parser.add_argument('-b', type=int, default=None, help='If specified, ignore recording numbers below this. Default = None.')
     parser.add_argument('-n', type=int, default=500, help='Maximum number of recordings to download. Default = 500.')
     parser.add_argument('-r', type=int, default=1, help='1 = rename by adding an N prefix, 0 = do not rename (default = 1).')
     parser.add_argument('-s', type=str, default='', help='Species name.')
 
     args = parser.parse_args()
 
-    Main(args.s, args.o, args.n, args.r == 1).run()
-            
+    Main(args.s, args.o, args.n, args.r == 1, args.b).run()
