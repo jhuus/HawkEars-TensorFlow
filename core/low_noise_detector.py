@@ -30,7 +30,6 @@ class LowNoiseDetector:
     def check_for_noise(self, specs):
         # initialize return values
         ret_vals = [False for i in range(len(specs))]
-        high_maxes = [0 for i in range(len(specs))]
 
         # get the indexes of the ones with loud low frequencies
         indexes = []
@@ -39,14 +38,13 @@ class LowNoiseDetector:
             if spec is None:
                 continue
 
-            low_max = np.max(spec[:cfg.lnd_low_idx,:])
-            high_max = np.max(spec[cfg.lnd_high_idx:,:])
-            high_maxes[i] = high_max
-            if high_max > 0 and low_max > cfg.lnd_low_mult * high_max:
+            low_max = np.max(spec[:cfg.lnd_chk_idx,:])
+            high_max = np.max(spec[cfg.lnd_spec_height:,:])
+            if low_max > high_max * cfg.lnd_max_factor:
                 indexes.append(i)
 
         if len(indexes) == 0:
-            return ret_vals, high_maxes
+            return ret_vals
 
         # copy relevant spectrograms into a numpy array and call the neural network;
         # first grow the array if needed
@@ -62,7 +60,7 @@ class LowNoiseDetector:
             if max > 0:
                 self.specs[i] /= max
 
-        predictions = self.model.predict(self.specs)
+        predictions = self.model.predict(self.specs, verbose=0)
 
         # update return values based on predictions
         for i in range(len(indexes)):
@@ -70,4 +68,4 @@ class LowNoiseDetector:
             if predictions[i][0] > cfg.lnd_min_confidence:
                 ret_vals[indexes[i]] = True
 
-        return ret_vals, high_maxes
+        return ret_vals
