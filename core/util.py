@@ -3,6 +3,7 @@
 import math
 import os
 from posixpath import splitext
+import random
 import sys
 import zlib
 
@@ -63,8 +64,8 @@ def expand_spectrogram(spec, low_noise_detector=False, reshape=True):
     return spec
 
 # return list of audio files in the given directory;
-# returned file names are fully qualified paths
-def get_audio_files(path):
+# returned file names are fully qualified paths, unless short_names=True
+def get_audio_files(path, short_names=False):
     files = []
     if os.path.isdir(path):
         for file_name in sorted(os.listdir(path)):
@@ -72,7 +73,10 @@ def get_audio_files(path):
             if os.path.isfile(file_path):
                 base, ext = os.path.splitext(file_path)
                 if ext != None and len(ext) > 0 and ext.lower() in AUDIO_EXTS:
-                    files.append(file_path)
+                    if short_names:
+                        files.append(file_name)
+                    else:
+                        files.append(file_path)
 
     return sorted(files)
 
@@ -114,6 +118,16 @@ def get_class_list(class_file_path=cfg.classes_file):
             class_list.append(tokens[0])
 
     return class_list
+
+# return a list of count random ints from 0 to max_val, with no duplicates
+def get_rand_list(count, max_val):
+    values = {}
+    while len(values.keys()) < count:
+        index = random.randint(0, max_val)
+        if index not in values:
+            values[index] = 1
+
+    return list(values.keys())
 
 # return a source name given a file name
 def get_source_name(filename):
