@@ -20,7 +20,7 @@ from core import util
 # command-line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('-lnd', type=int, default=0, help='1 = low noise detector. Default = 0.')
-parser.add_argument('-f', type=str, default='training', help='Database name.')
+parser.add_argument('-f', type=str, default='../data/training.db', help='Database path.')
 parser.add_argument('-c', type=int, default=0, help='1 = center the images.')
 parser.add_argument('-g', type=int, default=0, help='1 = use gray scale.')
 parser.add_argument('-n', type=int, default=0, help='If > 0, stop after this many images. Default = 0.')
@@ -32,7 +32,7 @@ parser.add_argument('-w', type=int, default=0, help='1 = overwrite existing imag
 args = parser.parse_args()
 
 low_noise_detector = (args.lnd == 1)
-db_name = args.f
+db_path = args.f
 species_name = args.s
 prefix = args.p.lower()
 num_to_plot = args.n
@@ -45,7 +45,7 @@ if not os.path.exists(out_dir):
     print(f'creating directory {out_dir}')
     os.makedirs(out_dir)
 
-db = database.Database(f'../data/{db_name}.db')
+db = database.Database(db_path)
 
 start_time = time.time()
 results = db.get_spectrogram_by_subcat_name(species_name)
