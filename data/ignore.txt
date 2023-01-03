@@ -1,9 +1,10 @@
 Canine
 Chipmunk
-Cicada
 Eastern Gray Squirrel
+Gray Treefrog
 Noise
+Other
 Red Squirrel
 Rooster
 Spring Peeper
-Gray Treefrog
+
