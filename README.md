@@ -1,11 +1,11 @@
 ## Introduction
-HawkEars is a desktop program that scans audio recordings for bird sounds and generates [Audacity](https://www.audacityteam.org/) label files. It is inspired by [BirdNET](https://github.com/kahst/BirdNET), and intended as an improved productivity tool for analyzing field recordings. This repository includes the source code and a trained model for a list of species found in northeastern North America. The complete list is found [here](https://github.com/jhuus/HawkEars/blob/main/data/classes.txt). The repository does not include the raw data or spectrograms used to train the model.
+HawkEars is a desktop program that scans audio recordings for bird sounds and generates [Audacity](https://www.audacityteam.org/) label files. It is inspired by [BirdNET](https://github.com/kahst/BirdNET), and intended as an improved productivity tool for analyzing field recordings. This repository includes the source code and a trained model for a list of species found in Canada. The complete list is found [here](https://github.com/jhuus/HawkEars/blob/main/data/classes.txt). The repository does not include the raw data or spectrograms used to train the model.
 
 This project is licensed under the terms of the MIT license.
 
 ## Installation
 
-To install HawkEars on Linux or Windows: 
+To install HawkEars on Linux or Windows:
 
 1.	Install [Python 3](https://www.python.org/downloads/), if you do not already have it installed.
 2.	Download a copy of this repository. If you have Git installed, type:
@@ -13,7 +13,7 @@ To install HawkEars on Linux or Windows:
 ```
  git clone https://github.com/jhuus/HawkEars
 ```
- 
+
 Otherwise you can click on the Code link at the top, select “Download ZIP” and unzip it after it’s been downloaded.
 
 3.	Install required Python libraries:
@@ -42,7 +42,7 @@ sudo apt install sqlite3
 To run analysis, type:
 
 ```
-python analyze.py -i <input path> -o <output path> 
+python analyze.py -i <input path> -o <output path>
 ```
 
 The input path can be a directory or a reference to a single audio file, but the output path must be a directory, where the generated Audacity label files will be stored. As a quick first test, try:
@@ -51,7 +51,7 @@ The input path can be a directory or a reference to a single audio file, but the
 python analyze.py -i test -o test
 ```
 
-This will analyze the recording(s) included in the test directory. There are also a number of optional arguments, which you can review by typing: 
+This will analyze the recording(s) included in the test directory. There are also a number of optional arguments, which you can review by typing:
 
 ```
 python analyze.py -h
@@ -63,18 +63,16 @@ After running analysis, you can view the output by opening an audio file in Auda
 
 ![](audacity-labels.png)
 
-The numeric suffix on each label is a confidence level, which is not the same as a statistical probability. 
+The numeric suffix on each label is a confidence level, which is not the same as a statistical probability.
 
 To show spectrograms by default in Audacity, click Edit / Preferences / Tracks and set Default View Mode = Spectrogram. You can modify the spectrogram settings under Edit / Preferences / Tracks / Spectrograms.
 
 You can click a label to view or listen to that segment. You can also edit a label if a bird is misidentified, or delete and insert labels, and then export the edited label file for use as input to another process. Label files are simple text files and easy to process for data analysis purposes.
 
 ## Limitations
-Some bird species are difficult to identify by sound alone. This includes mimics, for obvious reasons, which is why Northern Mockingbird is not currently included in the species list. European Starlings are included, but often mimic other birds and are therefore sometimes challenging to identify. Species that have been excluded because they sound too much like other species are Boreal Chickadee (sounds like Black-capped Chickadee), Hoary Redpoll (sounds like Common Redpoll) and Philadelphia Vireo (sounds like Red-eyed Vireo). 
+Some bird species are difficult to identify by sound alone. This includes mimics, for obvious reasons, which is why Northern Mockingbird is not currently included in the species list. European Starlings are included, but often mimic other birds and are therefore sometimes challenging to identify. Species that have been excluded because they sound too much like other species are Hoary Redpoll (sounds like Common Redpoll) and Philadelphia Vireo (sounds like Red-eyed Vireo).
 
 The current list is missing a number of species, especially shorebirds and waterfowl, so adding species is another future task. Also, it's missing sound types for many species. For example, juvenile begging sounds are mostly missing. That's partly due to difficulty getting enough good recordings of these sounds, but it's certainly an area for further work.
-
-Finally, HawkEars does not currently account for date or location, which could be used to adjust the likelihood or filter out certain species. On the other hand, off-season rarities do occur, so we have to be careful about our assumptions.   
 
 ## Training Your Own Model
 Setting up your own model mostly consists of finding good recordings, selecting segments within the recordings, and converting them to spectrograms stored in a SQLite database (see Implementation Notes below). Model training is performed by train.py. To see available parameters, type:
@@ -87,9 +85,9 @@ If this is something you want to do, and you would like some help, please contac
 
 ## Implementation Notes
 ### Neural Networks
-HawkEars uses an ensemble of three neural networks: one to detect low frequency noise during spectrogram creation, one to remove noise, and one to identify bird species. The noise detection and species identification networks are based on the EfficientNetV2 design introduced in [this paper](https://arxiv.org/abs/2104.00298). It is an image-classification network, trained on spectrogram images. The implementation is in model/efficientnet_v2.py. For noise removal, HawkEars uses [this neural network](https://github.com/keras-team/keras-io/blob/master/examples/vision/mirnet.py).
+HawkEars uses an ensemble of two neural networks: one to detect low frequency noise during spectrogram creation, and one to identify bird species. Both are based on the EfficientNetV2 design introduced in [this paper](https://arxiv.org/abs/2104.00298). It is an image-classification network, trained on spectrogram images. The implementation is in model/efficientnet_v2.py.
 
 ### Spectrograms
-Spectrograms are extracted from audio files in core/audio.py, then compressed and saved to a SQLite database. 
+Spectrograms are extracted from audio files in core/audio.py, then compressed and saved to a SQLite database.
 
 (more content required here)
