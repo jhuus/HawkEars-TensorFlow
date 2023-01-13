@@ -19,7 +19,6 @@ from core import util
 
 # command-line arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('-lnd', type=int, default=0, help='1 = low noise detector. Default = 0.')
 parser.add_argument('-f', type=str, default='../data/training.db', help='Database path.')
 parser.add_argument('-c', type=int, default=0, help='1 = center the images.')
 parser.add_argument('-g', type=int, default=0, help='1 = use gray scale.')
@@ -31,7 +30,6 @@ parser.add_argument('-w', type=int, default=0, help='1 = overwrite existing imag
 
 args = parser.parse_args()
 
-low_noise_detector = (args.lnd == 1)
 db_path = args.f
 species_name = args.s
 prefix = args.p.lower()
@@ -60,12 +58,12 @@ for r in results:
 
     if overwrite or not os.path.exists(spec_path):
         print(f"Processing {spec_path}")
-        spec = util.expand_spectrogram(r.value, low_noise_detector=low_noise_detector)
+        spec = util.expand_spectrogram(r.value)
         if center:
             spec = util.center_spec(spec)
 
         num_plotted += 1
-        plot.plot_spec(spec, spec_path, low_noise_detector=low_noise_detector, gray_scale=gray_scale)
+        plot.plot_spec(spec, spec_path, gray_scale=gray_scale)
 
     if num_to_plot > 0 and num_plotted == num_to_plot:
         break
