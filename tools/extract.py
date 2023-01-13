@@ -19,6 +19,7 @@ parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 
 from core import audio
+from core import config as cfg
 from core import database
 from core import util
 
@@ -222,6 +223,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     start_time = time.time()
 
+    cfg.spec_exponent = 1 # don't bring out quiet sounds
     Main(args.a, args.b, args.c, args.d, args.f, args.i, args.s, args.t).run()
 
     elapsed = time.time() - start_time
