@@ -30,14 +30,8 @@ class DataGenerator():
         self.y_train = y_train
         self.train_class = train_class
 
-        if cfg.low_noise_detector:
-            self.spec_height = cfg.lnd_spec_height
-            # don't add noise when training low noise detector
-            freqs = np.array([cfg.blur_freq, cfg.fade_freq, 0, 0, 0, cfg.shift_freq, cfg.speckle_freq])
-        else:
-            self.spec_height = cfg.spec_height
-            freqs = np.array([cfg.blur_freq, cfg.fade_freq, cfg.white_noise_freq, cfg.pink_noise_freq,
-                cfg.real_noise_freq, cfg.shift_freq, cfg.speckle_freq])
+        freqs = np.array([cfg.blur_freq, cfg.fade_freq, cfg.white_noise_freq, cfg.pink_noise_freq,
+            cfg.real_noise_freq, cfg.shift_freq, cfg.speckle_freq])
 
         self.indices = np.arange(y_train.shape[0])
         if cfg.augmentation:
@@ -49,25 +43,24 @@ class DataGenerator():
             for i in range(1, SPECKLE_INDEX + 1):
                 self.probs[i] = self.probs[i - 1] + probs[i]
 
-            if not cfg.low_noise_detector:
-                # create some white noise
-                self.white_noise = np.zeros((CACHE_LEN, self.spec_height, cfg.spec_width, 1))
-                for i in range(CACHE_LEN):
-                    self.white_noise[i] = skimage.util.random_noise(self.white_noise[i], mode='gaussian', seed=cfg.seed, var=cfg.noise_variance, clip=True)
-                    self.white_noise[i] /= np.max(self.white_noise[i]) # scale so max value is 1
+            # create some white noise
+            self.white_noise = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
+            for i in range(CACHE_LEN):
+                self.white_noise[i] = skimage.util.random_noise(self.white_noise[i], mode='gaussian', seed=cfg.seed, var=cfg.noise_variance, clip=True)
+                self.white_noise[i] /= np.max(self.white_noise[i]) # scale so max value is 1
 
-                # create some pink noise
-                self.pink_noise = np.zeros((CACHE_LEN, self.spec_height, cfg.spec_width, 1))
-                for i in range(CACHE_LEN):
-                    self.pink_noise[i] = self.audio.pink_noise()
+            # create some pink noise
+            self.pink_noise = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
+            for i in range(CACHE_LEN):
+                self.pink_noise[i] = self.audio.pink_noise()
 
-                # get some noise spectrograms from the database
-                results = db.get_spectrogram_by_subcat_name('Noise')
-                self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
-                for i, r in enumerate(results):
-                    self.real_noise[i] = util.expand_spectrogram(r.value)
+            # get some noise spectrograms from the database
+            results = db.get_spectrogram_by_subcat_name('Noise')
+            self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
+            for i, r in enumerate(results):
+                self.real_noise[i] = util.expand_spectrogram(r.value)
 
-            self.speckle = np.zeros((CACHE_LEN, self.spec_height, cfg.spec_width, 1))
+            self.speckle = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
             for i in range(CACHE_LEN):
                 self.speckle[i] = skimage.util.random_noise(self.speckle[i], mode='gaussian', seed=cfg.seed, var=cfg.speckle_variance, clip=True)
 
@@ -75,10 +68,10 @@ class DataGenerator():
     def __call__(self):
         np.random.shuffle(self.indices)
         for i, id in enumerate(self.indices):
-            spec = util.expand_spectrogram(self.x_train[id], low_noise_detector=cfg.low_noise_detector)
+            spec = util.expand_spectrogram(self.x_train[id])
             label = self.y_train[id].astype(np.float32)
 
-            if cfg.augmentation and cfg.multi_label and not cfg.low_noise_detector and self.train_class[id] != 'Noise':
+            if cfg.augmentation and cfg.multi_label and self.train_class[id] != 'Noise':
                 prob = random.uniform(0, 1)
 
                 if prob < cfg.prob_merge:
@@ -161,7 +154,7 @@ class DataGenerator():
     # perform a random horizontal shift of the spectrogram
     def _shift_horizontal(self, spec):
         # detect left-shifted spectrograms, so we don't shift further left
-        left_part = spec[:self.spec_height, :10]
+        left_part = spec[:cfg.spec_height, :10]
         num_pixels = (left_part > 0.05).sum()
         if num_pixels > 300:
             max_shift_left = 0
@@ -169,7 +162,7 @@ class DataGenerator():
             max_shift_left = cfg.max_shift
 
         # detect right-shifted spectrograms, so we don't shift further right
-        right_part = spec[:self.spec_height, cfg.spec_width - 10:]
+        right_part = spec[:cfg.spec_height, cfg.spec_width - 10:]
         num_pixels = (right_part > 0.05).sum()
         if num_pixels > 300:
             max_shift_right = 0
