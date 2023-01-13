@@ -59,11 +59,10 @@ class Trainer:
                 model = keras.models.load_model(cfg.ckpt_path)
             else:
                 class_act = 'sigmoid' if cfg.multi_label else 'softmax'
-                spec_height = cfg.lnd_spec_height if cfg.low_noise_detector else cfg.spec_height
                 model = efficientnet_v2.EfficientNetV2(
                         model_type=cfg.eff_config,
                         num_classes=len(self.classes),
-                        input_shape=(spec_height, cfg.spec_width, 1),
+                        input_shape=(cfg.spec_height, cfg.spec_width, 1),
                         activation='swish',
                         classifier_activation=class_act,
                         dropout=0.15,
@@ -104,7 +103,7 @@ class Trainer:
         train_ds = tf.data.Dataset.from_generator(
             datagen,
             output_types=(tf.float16, tf.float16),
-            output_shapes=([self.spec_height, cfg.spec_width, 1],[len(self.classes)]))
+            output_shapes=([cfg.spec_height, cfg.spec_width, 1],[len(self.classes)]))
         train_ds = train_ds.with_options(options)
         train_ds = train_ds.batch(cfg.batch_size)
 
@@ -201,11 +200,6 @@ class Trainer:
         return class_weight
 
     def init(self):
-        if cfg.low_noise_detector:
-            self.spec_height = cfg.lnd_spec_height
-        else:
-            self.spec_height = cfg.spec_height
-
         # count spectrograms and randomly select which to use for testing vs. training
         num_spectrograms = []
         self.test_indices = []
@@ -229,9 +223,9 @@ class Trainer:
         self.x_train = [0 for i in range(train_total)]
         self.y_train = np.zeros((train_total, len(self.classes)))
         self.train_class = ['' for i in range(train_total)]
-        self.x_test = np.zeros((test_total, self.spec_height, cfg.spec_width, 1))
+        self.x_test = np.zeros((test_total, cfg.spec_height, cfg.spec_width, 1))
         self.y_test = np.zeros((test_total, len(self.classes)))
-        self.input_shape = (self.spec_height, cfg.spec_width, 1)
+        self.input_shape = (cfg.spec_height, cfg.spec_width, 1)
 
         # map test spectrogram indexes to file names for outputting names of misidentified ones
         self.spec_file_name = {}
@@ -250,7 +244,7 @@ class Trainer:
                     if spec_index in self.test_indices[i]:
                         # test spectrograms are expanded here
                         self.spec_file_name[test_index] = f'{r.filename}-{r2.offset}' # will be used in names of files written to misident folder
-                        self.x_test[test_index] = util.expand_spectrogram(r2.value, low_noise_detector=cfg.low_noise_detector)
+                        self.x_test[test_index] = util.expand_spectrogram(r2.value)
                         self.y_test[test_index][i] = 1
                         test_index += 1
                     else:
@@ -285,7 +279,6 @@ if __name__ == '__main__':
     parser.add_argument('-t', type=float, default=cfg.test_portion, help=f'Test portion. Default = {cfg.test_portion}')
     parser.add_argument('-u', type=int, default=1, help='1 = If 1, train a multi-label classifier. Default = 1.')
     parser.add_argument('-v', type=int, default=1, help='Verbosity (0-2, 0 is minimal, 2 includes graph of model). Default = 1.')
-    parser.add_argument('-y', type=int, default=0, help='If y = 1, extract spectrograms for low-noise detector. Default = 0.')
     parser.add_argument('-z', type=int, default=cfg.seed, help=f'Integer seed for random number generators. Default = {cfg.seed}. If specified, other settings to increase repeatability will also be enabled, which slows down training.')
 
     args = parser.parse_args()
@@ -299,7 +292,6 @@ if __name__ == '__main__':
     cfg.test_portion = args.t
     cfg.multi_label = (args.u == 1)
     cfg.verbosity = args.v
-    cfg.low_noise_detector = (args.y == 1)
     cfg.seed = args.z
 
     if cfg.seed != None:
