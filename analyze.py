@@ -75,6 +75,7 @@ class Analyzer:
         self.class_infos = self._get_class_infos()
         self.audio = audio.Audio()
         self._process_lat_lon_date()
+        #self.denoiser = keras.models.load_model("data/denoiser", compile=False)
 
     # process latitude, longitude and date
     def _process_lat_lon_date(self):
@@ -243,12 +244,21 @@ class Analyzer:
     # get the list of spectrograms
     def _get_specs(self, start_seconds, end_seconds):
         self.offsets = np.arange(start_seconds, end_seconds + 1.0, 1.0).tolist()
-        specs = self.audio.get_spectrograms(self.offsets, dampen_low_noise=cfg.dampen_low_noise)
+        specs = self.audio.get_spectrograms(self.offsets)
         spec_array = np.zeros((len(specs), cfg.spec_height, cfg.spec_width, 1))
         for i in range(len(specs)):
             spec_array[i] = specs[i].reshape((cfg.spec_height, cfg.spec_width, 1)).astype(np.float32)
 
         return spec_array
+
+        '''
+        denoised = self.denoiser.predict(spec_array, verbose=0)
+        for i in range(len(denoised)):
+            denoised[i] = denoised[i] / denoised[i].max() # make the max 1
+            denoised[i] = np.clip(denoised[i], 0, 1) # clip negative values
+
+        return denoised
+        '''
 
     def _analyze_file(self, file_path):
         logging.info(f'Analyzing {file_path}')
@@ -270,9 +280,9 @@ class Analyzer:
             class_info.reset()
             if check_frequency and not class_info.ignore:
                 if self.week_num is None and not self.get_date_from_file_name:
-                    if class_info.max_frequency < cfg.min_freq:
+                    if class_info.max_frequency < cfg.min_location_freq:
                         class_info.frequency_too_low = True
-                elif not self.week_num in class_info.frequency_dict or class_info.frequency_dict[self.week_num] < cfg.min_freq:
+                elif not self.week_num in class_info.frequency_dict or class_info.frequency_dict[self.week_num] < cfg.min_location_freq:
                     class_info.frequency_too_low = True
 
         signal, rate = self.audio.load(file_path)
@@ -406,7 +416,7 @@ if __name__ == '__main__':
     cfg.check_adjacent = (args.adj == 1)
     cfg.use_banding_codes = (args.band == 1)
     cfg.min_prob = args.prob
-    cfg.min_freq = args.min_freq
+    cfg.min_location_freq = args.min_freq
 
     analyzer = Analyzer(args.input, args.output, args.start, args.end, args.date, args.lat, args.lon, args.debug)
     analyzer.run(start_time)
