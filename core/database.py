@@ -394,11 +394,11 @@ class Database:
 # Spectrogram
 # ------------------------------- #
 
-    def insert_spectrogram(self, recording_id, value, offset, embedding=None):
+    def insert_spectrogram(self, recording_id, value, offset, audio=None, embedding=None):
         try:
-            query = 'INSERT INTO Spectrogram (RecordingID, Value, Offset, Embedding) Values (?, ?, ?, ?)'
+            query = 'INSERT INTO Spectrogram (RecordingID, Value, Offset, Audio, Embedding) Values (?, ?, ?, ?, ?)'
             cursor = self.conn.cursor()
-            cursor.execute(query, (recording_id, value, offset, embedding))
+            cursor.execute(query, (recording_id, value, offset, audio, embedding))
             cursor = self.conn.cursor()
             self.conn.commit()
             return cursor.lastrowid
