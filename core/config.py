@@ -1,21 +1,17 @@
 # basic audio
 segment_len = 3         # spectrogram duration in seconds
-sampling_rate = 40960   # 20 * 2048; with win_len and hop_len this ensures correct spectrogram widths
-win_length = 2048
+sampling_rate = 40960
 hop_length = 320
-spec_height = 128       # normal spectrogram height
-spec_width = 384        # spectrogram width
-min_freq = 30
-max_freq = 12500
-mel_scale = True        # use False (linear scale) only for plotting spectrograms
-spec_exponent=.80       # raise spectrogram values to this exponent
+win_length = 2048
+spec_height = 128       # spectrogram height
+spec_width = 384        # spectrogram width (3 * 128)
+min_audio_freq = 200
+max_audio_freq = 10500
+mel_scale = True
+spec_exponent = .75      # raise spectrogram values to this exponent (brings out faint sounds)
 spec_block_seconds = 240 # max seconds of spectrogram to create at a time (limited by GPU memory)
-
-# low noise detector
-lnd_spec_height = 32
-lnd_chk_idx=20
-lnd_max_factor = 1.3
-lnd_min_confidence = 0.60
+high_pass_filter = True
+mel_amplitude_adjustment = True
 
 # training
 base_lr = .006          # base learning rate
@@ -27,7 +23,6 @@ ckpt_min_val_accuracy = 0 # min validation accuracy before saving checkpoint
 copy_ckpt = True        # save a copy of each checkpoint
 label_smoothing = 0.13
 load_saved_model = False
-low_noise_detector = False # True = train the low-noise detector
 mixed_precision = True  # trains much faster if true
 multi_label = True
 save_best_only = False
@@ -62,16 +57,15 @@ min_mult = 0.8
 max_mult = 1.0
 
 # analysis / inference
-min_prob = 0.9              # minimum confidence level
-use_banding_codes = False   # use banding codes instead of species names in labels
-check_adjacent = True       # omit label unless adjacent segment matches
-dampen_low_noise = True     # use neural net to identify low frequency noise in audio input, then attenuate it
-adjacent_prob_factor = 0.65 # when checking if adjacent segment matches species, use self.min_prob times this
-reset_model_counter = 10    # in analysis, reset the model every n loops to avoid running out of GPU memory
+min_prob = 0.85              # minimum confidence level
+use_banding_codes = False    # use banding codes instead of species names in labels
+check_adjacent = True        # omit label unless adjacent segment matches
+adjacent_prob_factor = 0.65  # when checking if adjacent segment matches species, use self.min_prob times this
+reset_model_counter = 10     # in analysis, reset the model every n loops to avoid running out of GPU memory
 top_n = 6 # number of top matches to log in debug mode
-min_freq = .01             # ignore if species frequency less than this for location/week
+min_location_freq = .01      # ignore if species frequency less than this for location/week
 file_date_regex = '\S+_(\d+)_.*' # regex to extract date from file name (e.g. HNCAM015_20210529_161122.mp3)
-file_date_regex_group = 1   # use group at offset 1
+file_date_regex_group = 1    # use group at offset 1
 
 # Soundalike groups are used in analysis / inference when a location is given.
 # For each soundalike species, eBird barchart data is accessed to get the maximum
