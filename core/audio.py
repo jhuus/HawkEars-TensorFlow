@@ -10,38 +10,52 @@ import numpy as np
 import scipy
 import tensorflow as tf
 
-from . import low_noise_detector
 from core import config as cfg
 from core import plot
+
+# mel scaling distorts amplitudes, so divide by this to compensate;
+# see gen_mel_adjustment.py for the code that generates these values
+adjust_mel_amplitude = [
+    0.026919,0.027495,0.028521,0.034298,0.031367,0.031291,0.034798,0.034513,0.032859,0.038978,0.032325,0.042106,0.036139,0.041577,0.037585,0.037485,
+    0.043633,0.042630,0.042206,0.043395,0.045717,0.046398,0.046903,0.047681,0.048802,0.050954,0.052144,0.053238,0.056013,0.057329,0.059150,0.063504,
+    0.059934,0.065076,0.064353,0.063853,0.069758,0.073321,0.069831,0.069919,0.074158,0.079379,0.079901,0.082265,0.086648,0.087482,0.087969,0.087006,
+    0.086812,0.091648,0.095205,0.097862,0.102273,0.102333,0.105423,0.108270,0.107726,0.112535,0.113461,0.116392,0.124740,0.124153,0.124960,0.131739,
+    0.132585,0.138153,0.143185,0.146503,0.144147,0.153113,0.155650,0.162229,0.168459,0.170942,0.174179,0.174325,0.179911,0.184171,0.192862,0.195626,
+    0.202218,0.202807,0.210233,0.214447,0.215467,0.222824,0.230259,0.234748,0.241555,0.250036,0.255858,0.259823,0.262786,0.268640,0.276871,0.287395,
+    0.295998,0.307393,0.312396,0.317129,0.324253,0.333895,0.334569,0.347561,0.357874,0.375411,0.376225,0.389205,0.402477,0.401829,0.416931,0.427271,
+    0.437032,0.446443,0.457271,0.472060,0.483338,0.495797,0.498201,0.511688,0.527619,0.544980,0.557429,0.575573,0.575069,0.604038,0.610146,0.630232,
+]
 
 class Audio:
     def __init__(self, path_prefix=''):
         self.have_signal = False
         self.signal = None
         self.path_prefix = path_prefix
-        self.low_noise_detector = None
 
     # width of spectrogram is determined by input signal length, and height = cfg.spec_height
     def _get_raw_spectrogram(self, signal):
-        s = tf.signal.stft(signals=signal, frame_length=cfg.win_length, frame_step=cfg.hop_length, fft_length=cfg.win_length, pad_end=True)
+        s = tf.signal.stft(signals=signal, frame_length=cfg.win_length, frame_step=cfg.hop_length, fft_length=2*cfg.win_length, pad_end=True)
+
         spec = tf.cast(tf.abs(s), tf.float32)
 
-        # clip frequencies above max_freq
+        # clip frequencies above max_audio_freq
         num_freqs = spec.shape[1]
-        clip_idx = int(2 * spec.shape[1] * cfg.max_freq / cfg.sampling_rate)
+        clip_idx = int(2 * spec.shape[1] * cfg.max_audio_freq / cfg.sampling_rate)
         spec = spec[:, :clip_idx]
 
         if cfg.mel_scale:
             # mel spectrogram
             num_spectrogram_bins = int(spec.shape[-1])
             linear_to_mel_matrix = tf.signal.linear_to_mel_weight_matrix(
-                cfg.spec_height, num_spectrogram_bins, cfg.sampling_rate, cfg.min_freq, cfg.sampling_rate // 2)
+                cfg.spec_height, num_spectrogram_bins, cfg.sampling_rate, cfg.min_audio_freq, cfg.sampling_rate // 2)
             mel = tf.tensordot(spec, linear_to_mel_matrix, 1)
             mel.set_shape(spec.shape[:-1].concatenate(linear_to_mel_matrix.shape[-1:]))
             spec = np.transpose(mel)
+            if cfg.mel_amplitude_adjustment and cfg.spec_height == len(adjust_mel_amplitude):
+                spec = (spec.T / adjust_mel_amplitude).T # compensate for how mel scaling increases high frequency amplitudes
         else:
-            # linear frequency scale (use only for plotting spectrograms)
-            spec = cv2.resize(spec.numpy(), dsize=(cfg.spec_height, spec.shape[0]), interpolation=cv2.INTER_CUBIC)
+            # linear frequency scale (used sometimes for plotting spectrograms)
+            spec = cv2.resize(spec.numpy(), dsize=(cfg.spec_height, spec.shape[0]), interpolation=cv2.INTER_AREA)
             spec = np.transpose(spec)
 
         return spec
@@ -74,23 +88,6 @@ class Audio:
                 specs[i] = specs[i] / max
 
             specs[i] = specs[i].clip(0, 1)
-
-    # use a neural net to identify low frequency noise;
-    # if found, attenuate it to bring out other sounds
-    def _dampen_low_noise(self, specs):
-        if self.low_noise_detector is None:
-            self.low_noise_detector = low_noise_detector.LowNoiseDetector(self.path_prefix)
-
-        is_noise = self.low_noise_detector.check_for_noise(specs)
-
-        for i in range(len(specs)):
-            if is_noise[i]:
-                # there are loud sounds in the low frequencies, and it's noise;
-                # dampen it so quieter high frequency sounds don't disappear during normalization;
-                # i.e. apply a very simple sort of high-pass filter heuristic
-                for row in range(cfg.lnd_spec_height):
-                    row_max = np.max(specs[i][row:row+1,:])
-                    specs[i][row:row+1,:] *= row / cfg.lnd_spec_height
 
     # look for a sound in the given frequency (height) range, in the first segment of the spec;
     # if found, return the starting offset in seconds
@@ -189,9 +186,26 @@ class Audio:
         spec = spec / spec.max() # normalize to [0, 1]
         return spec.reshape((cfg.spec_height, cfg.spec_width, 1))
 
+    # return a white noise spectrogram with values in range [0, 1]
+    def white_noise(self, mean=0, stdev=1):
+        samples = cfg.segment_len * cfg.sampling_rate
+        segment = np.random.normal(loc=mean, scale=.0001, size=samples).astype(np.float32)
+        spec = self._get_raw_spectrogram(segment)
+        spec = spec / spec.max() # normalize to [0, 1]
+        return spec.reshape((cfg.spec_height, cfg.spec_width, 1))
+
+    # return a spectrogram with a sin wave of the given frequency
+    def sin_wave(self, frequency):
+        samples = cfg.segment_len * cfg.sampling_rate
+        t = np.linspace(0, 2*np.pi, samples)
+        segment = np.sin(t*frequency*cfg.segment_len)
+        spec = self._get_raw_spectrogram(segment)
+        spec = spec / spec.max() # normalize to [0, 1]
+        return spec.reshape((cfg.spec_height, cfg.spec_width, 1))
+
     # return list of spectrograms for the given offsets (i.e. starting points in seconds);
     # you have to call load() before calling this
-    def get_spectrograms(self, offsets, seconds=cfg.segment_len, multi_spec=False, dampen_low_noise=False, low_noise_detector=False):
+    def get_spectrograms(self, offsets, seconds=cfg.segment_len, spec_exponent=cfg.spec_exponent, multi_spec=False):
         if not self.have_signal:
             return None
 
@@ -231,18 +245,9 @@ class Audio:
                     specs.append(spec)
 
         self._normalize(specs)
-        if cfg.spec_exponent != 1:
+        if spec_exponent != 1:
             for i in range(len(specs)):
-                specs[i] = specs[i] ** cfg.spec_exponent
-
-        if low_noise_detector:
-            for i in range(len(specs)):
-                # return only the lowest frequencies for binary classifier spectrograms
-                specs[i] = specs[i][:cfg.lnd_spec_height, :]
-        else:
-            if dampen_low_noise:
-                self._dampen_low_noise(specs)
-                self._normalize(specs)
+                specs[i] = specs[i] ** spec_exponent
 
         return specs
 
@@ -255,11 +260,19 @@ class Audio:
         spectrogram = None
 
         try:
-            bytes, _ = (ffmpeg
-                .input(path)
-                .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{cfg.sampling_rate}')
-                .overwrite_output()
-                .run(capture_stdout=True, capture_stderr=True, quiet=True))
+            if cfg.high_pass_filter:
+                bytes, _ = (ffmpeg
+                    .input(path)
+                    .filter('highpass', frequency=cfg.min_audio_freq, width_type='q', width=.5)
+                    .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{cfg.sampling_rate}')
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True, quiet=True))
+            else:
+                bytes, _ = (ffmpeg
+                    .input(path)
+                    .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{cfg.sampling_rate}')
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True, quiet=True))
 
             # convert byte array to float array, and then to a numpy array
             scale = 1.0 / float(1 << ((16) - 1))
