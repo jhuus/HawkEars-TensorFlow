@@ -50,18 +50,24 @@ def compress_spectrogram(data):
     return compressed
 
 # decompress a spectrogram, then convert from bytes to floats and reshape it
-def expand_spectrogram(spec, low_noise_detector=False, reshape=True):
+def expand_spectrogram(spec, reshape=True):
     bytes = zlib.decompress(spec)
     spec = np.frombuffer(bytes, dtype=np.uint8) / 255
     spec = spec.astype(np.float32)
 
     if reshape:
-        if low_noise_detector:
-            spec = spec.reshape(cfg.lnd_spec_height, cfg.spec_width, 1)
-        else:
-            spec = spec.reshape(cfg.spec_height, cfg.spec_width, 1)
+        spec = spec.reshape(cfg.spec_height, cfg.spec_width, 1)
 
     return spec
+
+# convert compressed audio in the DB to signed 16-bit PCM;
+def convert_audio(compressed):
+    uncompressed = zlib.decompress(compressed)
+    array = np.frombuffer(uncompressed, dtype=np.float32)
+    array = array * 32768
+    array = array.astype(np.int16)
+    bytes = array.tobytes()
+    return bytes
 
 # return list of audio files in the given directory;
 # returned file names are fully qualified paths, unless short_names=True
