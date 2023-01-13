@@ -9,12 +9,9 @@ import numpy as np
 from core import config as cfg
 
 # save a plot of a spectrogram
-def plot_spec(spec, path, low_noise_detector=False, gray_scale=False):
+def plot_spec(spec, path, gray_scale=False):
     if spec.ndim == 3:
-        if low_noise_detector:
-            spec = spec.reshape((cfg.lnd_spec_height, cfg.spec_width))
-        else:
-            spec = spec.reshape((cfg.spec_height, cfg.spec_width))
+        spec = spec.reshape((cfg.spec_height, cfg.spec_width))
 
     plt.clf() # clear any existing plot data
 
