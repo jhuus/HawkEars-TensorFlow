@@ -18,8 +18,8 @@ base_lr = .003          # base learning rate
 cos_decay_pad = 0       # larger values reduce cosine decay of learning rate
 batch_size = 32
 eff_config = 'a3'       # EfficientNet_v2 configuration to use ('r' for ResNest)
-eff_dropout = 0.2       # dropout rate for EfficientNext_V2 output block
-eff_drop_connect = 0.4  # dropout rate for EfficientNext_V2 non-output blocks
+eff_dropout = 0.4       # dropout rate for EfficientNext_V2 output block
+eff_drop_connect = 0.5  # dropout rate for EfficientNext_V2 non-output blocks
 resnest_stages = 2      # if eff_config = 'r'
 resnest_blocks = [2,2]
 num_epochs = 1
@@ -52,7 +52,7 @@ min_fade = 0.1           # multiply values by a random float in [min_fade, max_f
 max_fade = 1.0
 
 # analysis / inference
-min_prob = 0.85              # minimum confidence level
+min_prob = 0.75              # minimum confidence level
 use_banding_codes = True     # use banding codes instead of species names in labels
 check_adjacent = True        # omit label unless adjacent segment matches
 adjacent_prob_factor = 0.65  # when checking if adjacent segment matches species, use self.min_prob times this
