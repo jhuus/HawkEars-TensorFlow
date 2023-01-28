@@ -2,29 +2,28 @@
 # To see command-line arguments, run the script with -h argument.
 
 import argparse
+import logging
 import math
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import random
-import shutil
 import time
 from collections import namedtuple
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' # 1 = no info, 2 = no warnings, 3 = no errors
-#os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # 1 = no info, 2 = no warnings, 3 = no errors
 
+import matplotlib.pyplot as plt
+import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 
 from core import config as cfg
 from core import data_generator
 from core import database
-from core import plot
 from core import util
 
 from model import model_checkpoint
 from model import efficientnet_v2
+from model import resnest
 
 class Trainer:
     def __init__(self):
@@ -51,74 +50,23 @@ class Trainer:
 
         plt.savefig(f'{dir}/{key1}.png')
 
+    # run training
     def run(self):
-        #strategy = tf.distribute.MirroredStrategy() # for multi-GPU training
-        strategy = tf.distribute.get_strategy()
-        with strategy.scope():
-            if cfg.load_saved_model:
-                model = keras.models.load_model(cfg.ckpt_path)
-            else:
-                class_act = 'sigmoid' if cfg.multi_label else 'softmax'
-                model = efficientnet_v2.EfficientNetV2(
-                        model_type=cfg.eff_config,
-                        num_classes=len(self.classes),
-                        input_shape=(cfg.spec_height, cfg.spec_width, 1),
-                        activation='swish',
-                        classifier_activation=class_act,
-                        dropout=0.15,
-                        drop_connect_rate=0.25)
-
-            opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
-            if cfg.multi_label:
-                loss = keras.losses.BinaryCrossentropy(label_smoothing = cfg.label_smoothing)
-                model.compile(loss=loss, optimizer=opt)
-            else:
-                loss = keras.losses.CategoricalCrossentropy(label_smoothing = cfg.label_smoothing)
-                model.compile(loss=loss, optimizer=opt, metrics='accuracy')
-
-        # create output directory
-        dir = 'summary'
-        if not os.path.exists(dir):
-            os.makedirs(dir)
-
-        if cfg.verbosity > 0:
-            # output text and graphical descriptions of the model
-            with open(f'{dir}/table.txt','w') as text_output:
-                model.summary(print_fn=lambda x: text_output.write(x + '\n'))
-
-            if cfg.verbosity >= 2:
-                keras.utils.plot_model(model, show_shapes=True, to_file=f'{dir}/graphic.png')
-
-        # initialize callbacks
-        lr_scheduler = keras.callbacks.LearningRateScheduler(cos_lr_schedule)
-        model_checkpoint_callback = model_checkpoint.ModelCheckpoint(cfg.ckpt_path, cfg.ckpt_min_epochs,
-            cfg.ckpt_min_val_accuracy, copy_ckpt=cfg.copy_ckpt, save_best_only=cfg.save_best_only)
-        callbacks = [lr_scheduler, model_checkpoint_callback]
-
-        # create the training and test datasets
-        options = tf.data.Options()
-        options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
-
-        datagen = data_generator.DataGenerator(self.db, self.x_train, self.y_train, self.train_class)
-        train_ds = tf.data.Dataset.from_generator(
-            datagen,
-            output_types=(tf.float16, tf.float16),
-            output_shapes=([cfg.spec_height, cfg.spec_width, 1],[len(self.classes)]))
-        train_ds = train_ds.with_options(options)
-        train_ds = train_ds.batch(cfg.batch_size)
-
-        test_ds = tf.data.Dataset.from_tensor_slices((self.x_test, self.y_test))
-        test_ds = test_ds.with_options(options)
-        test_ds = test_ds.batch(cfg.batch_size)
-
-        # run training
         start_time = time.time()
-        history = model.fit(train_ds, epochs = cfg.num_epochs, verbose = cfg.verbosity, validation_data = test_ds,
-            shuffle = False, callbacks = callbacks, class_weight = self._get_class_weight())
+
+        if cfg.seed is not None:
+            keras.utils.set_random_seed(cfg.seed)
+
+        history = self.model.fit(self.train_ds, epochs = cfg.num_epochs, verbose = cfg.verbosity, validation_data = self.test_ds,
+            shuffle = False, callbacks = self.callbacks, class_weight = self.get_class_weight())
+
         elapsed = time.time() - start_time
+        minutes = int(elapsed) // 60
+        seconds = int(elapsed) % 60
+        logging.info(f'Elapsed time for training = {minutes}m {seconds}s\n')
 
         if cfg.verbosity > 0:
-            with open(f'{dir}/summary.txt','w') as text_output:
+            with open(f'{self.out_dir}/summary.txt','w') as text_output:
                 text_output.write(f'EfficientNetV2 config: {cfg.eff_config}\n')
                 text_output.write(f'Batch size: {cfg.batch_size}\n')
                 text_output.write(f'Epochs: {cfg.num_epochs}\n')
@@ -132,40 +80,36 @@ class Trainer:
                     text_output.write(f'Training accuracy: {training_accuracy:.3f}\n')
 
                     if len(self.x_test) > 0:
-                        self.plot_results(dir, history, 'accuracy', 'val_accuracy')
-                        scores = model.evaluate(self.x_test, self.y_test)
+                        self.plot_results(self.out_dir, history, 'accuracy', 'val_accuracy')
+                        scores = self.model.evaluate(self.x_test, self.y_test)
                         test_accuracy = scores[1]
                     else:
-                        self.plot_results(dir, history, 'accuracy')
+                        self.plot_results(self.out_dir, history, 'accuracy')
 
 
                 if cfg.verbosity >= 1 and len(self.x_test) > 0:
                     text_output.write(f'Test loss: {scores[0]:.3f}\n')
                     text_output.write(f'Final test accuracy: {test_accuracy:.3f}\n')
-                    text_output.write(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
+                    text_output.write(f'Best test accuracy: {self.model_checkpoint_callback.best_val_accuracy:.4f}\n')
 
-                minutes = int(elapsed) // 60
-                seconds = int(elapsed) % 60
                 text_output.write(f'Elapsed time for training = {minutes}m {seconds}s\n')
 
             if cfg.verbosity >= 1 and 'loss' in history.history:
                 # output loss graph
                 if len(self.x_test) > 0:
-                    self.plot_results(dir, history, 'loss', 'val_loss')
+                    self.plot_results(self.out_dir, history, 'loss', 'val_loss')
                 else:
-                    self.plot_results(dir, history, 'loss')
+                    self.plot_results(self.out_dir, history, 'loss')
 
             if len(self.x_test) > 0:
-                print(f'Best test accuracy: {model_checkpoint_callback.best_val_accuracy:.4f}\n')
+                logging.info(f'Best test accuracy: {self.model_checkpoint_callback.best_val_accuracy:.4f}\n')
 
-            print(f'Elapsed time for training = {minutes}m {seconds}s\n')
-
-        return model_checkpoint_callback.best_val_accuracy
+        return self.model
 
     # given the total number of spectrograms in a class, return a dict of randomly selected
     # indices to use for testing (indices not in the list are used for training)
-    def get_test_indices(self, total):
-        num_test = math.ceil(cfg.test_portion * total)
+    def get_test_indices(self, total, test_portion):
+        num_test = math.ceil(test_portion * total)
 
         test_indices = {}
         while len(test_indices.keys()) < num_test:
@@ -176,13 +120,13 @@ class Trainer:
         return test_indices
 
     # calculate and return class weights
-    def _get_class_weight(self):
+    def get_class_weight(self):
         num_specs = {}
         sum = 0
         for class_name in self.classes:
             count = float(self.db.get_spectrogram_count(class_name))
             if count == 0:
-                print(f'Error. No spectrograms found for "{class_name}"')
+                logging.error(f'Error. No spectrograms found for "{class_name}"')
                 quit()
 
             num_specs[class_name] = count
@@ -194,19 +138,58 @@ class Trainer:
         for i, class_name in enumerate(self.classes):
             weight = avg_sqrt / math.sqrt(num_specs[class_name])
 
-            print(f'Applying weight {weight:.2f} to {class_name}')
+            logging.info(f'Applying weight {weight:.2f} to {class_name}')
+
             class_weight[i] = weight
 
         return class_weight
 
+    def create_model(self):
+        strategy = tf.distribute.get_strategy()
+        with strategy.scope():
+            if cfg.load_saved_model:
+                self.model = keras.models.load_model(cfg.load_ckpt_path)
+            else:
+                class_act = 'sigmoid' if cfg.multi_label else 'softmax'
+                if cfg.eff_config.startswith('r'):
+                    # ResNest is useful when experimenting with very small models
+                    self.model = resnest.ResNest(
+                            num_classes=len(self.classes),
+                            input_shape=(cfg.spec_height, cfg.spec_width, 1),
+                            num_stages=cfg.resnest_stages,
+                            blocks_set=cfg.resnest_blocks,
+                            seed=1
+                    ).build_model(class_act)
+                else:
+                    self.model = efficientnet_v2.EfficientNetV2(
+                            model_type=cfg.eff_config,
+                            num_classes=len(self.classes),
+                            input_shape=(cfg.spec_height, cfg.spec_width, 1),
+                            activation='swish',
+                            classifier_activation=class_act,
+                            dropout=cfg.eff_dropout,
+                            drop_connect_rate=cfg.eff_drop_connect)
+
+            opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
+            if cfg.multi_label:
+                loss = keras.losses.BinaryCrossentropy(label_smoothing = cfg.label_smoothing)
+                self.model.compile(loss=loss, optimizer=opt)
+            else:
+                loss = keras.losses.CategoricalCrossentropy(label_smoothing = cfg.label_smoothing)
+                self.model.compile(loss=loss, optimizer=opt, metrics='accuracy')
+
+    # initialize
     def init(self):
+        if cfg.seed is not None:
+            keras.utils.set_random_seed(cfg.seed)
+
         # count spectrograms and randomly select which to use for testing vs. training
         num_spectrograms = []
         self.test_indices = []
         for i in range(len(self.classes)):
             total = self.db.get_spectrogram_count(self.classes[i])
             num_spectrograms.append(total)
-            self.test_indices.append(self.get_test_indices(total))
+            self.test_indices.append(self.get_test_indices(total, cfg.test_portion))
 
         # get the total training and testing counts across all classes
         test_total = 0
@@ -214,10 +197,11 @@ class Trainer:
         for i in range(len(self.classes)):
             test_count = len(self.test_indices[i].keys())
             train_count = num_spectrograms[i] - test_count
-            test_total += test_count
-            train_total += train_count
 
-        print(f'# training samples: {train_total}, # test samples: {test_total}')
+            train_total += train_count
+            test_total += test_count
+
+        logging.info(f'# training samples: {train_total}, # test samples: {test_total}')
 
         # initialize arrays
         self.x_train = [0 for i in range(train_total)]
@@ -256,21 +240,65 @@ class Trainer:
 
                     spec_index += 1
 
+        self.create_model()
+
+        # create output directory
+        self.out_dir = 'summary'
+        if not os.path.exists(self.out_dir):
+            os.makedirs(self.out_dir)
+
+        if cfg.verbosity > 0 and self.model is not None:
+            # output text and graphical descriptions of the model
+            with open(f'{self.out_dir}/table.txt','w') as text_output:
+                self.model.summary(print_fn=lambda x: text_output.write(x + '\n'))
+
+            if cfg.verbosity >= 2:
+                keras.utils.plot_model(self.model, show_shapes=True, to_file=f'{self.out_dir}/graphic.png')
+
+        # initialize callbacks
+        lr_scheduler = keras.callbacks.LearningRateScheduler(cos_lr_schedule)
+        self.model_checkpoint_callback = model_checkpoint.ModelCheckpoint(cfg.ckpt_path, cfg.ckpt_min_epochs,
+            cfg.ckpt_min_val_accuracy, copy_ckpt=cfg.copy_ckpt, save_best_only=cfg.save_best_only)
+        self.callbacks = [lr_scheduler, self.model_checkpoint_callback]
+
+        # create the training and test datasets
+        options = tf.data.Options()
+        self.datagen = data_generator.DataGenerator(self.db, self.x_train, self.y_train, self.train_class)
+        train_ds = tf.data.Dataset.from_generator(
+            self.datagen,
+            output_types=(tf.float16, tf.float16),
+            output_shapes=([cfg.spec_height, cfg.spec_width, 1],[len(self.classes)]))
+        train_ds = train_ds.with_options(options)
+        self.train_ds = train_ds.batch(cfg.batch_size)
+
+        test_ds = tf.data.Dataset.from_tensor_slices((self.x_test, self.y_test))
+        test_ds = test_ds.with_options(options)
+        self.test_ds = test_ds.batch(cfg.batch_size)
+
 # learning rate schedule with cosine decay
 def cos_lr_schedule(epoch):
-    base_lr = cfg.base_lr * cfg.batch_size / 64
-    lr = base_lr * (1 + math.cos(epoch * math.pi / max(cfg.num_epochs, 1))) / 2
-
-    if cfg.verbosity == 0:
-        print(f'epoch: {epoch + 1} / {cfg.num_epochs}') # so there is at least some status info
+    base_lr = cfg.base_lr * cfg.batch_size / 32
+    lr = base_lr * (1 + math.cos(epoch * math.pi / max(cfg.num_epochs + cfg.cos_decay_pad, 1))) / 2
 
     return lr
+
+# may reduce variance a bit, but still not deterministic
+def set_deterministic():
+    os.environ['PYTHONHASHSEED'] = '0'
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+    tf.random.get_global_generator().reset_from_seed(1)
+    #tf.config.experimental.enable_op_determinism() # too slow and doesn't seem to help
+
+def set_mixed_precision():
+        keras.mixed_precision.set_global_policy("mixed_float16")
 
 if __name__ == '__main__':
 
     # command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', type=int, default=cfg.ckpt_min_epochs, help=f'Minimum epochs before saving checkpoint. Default = {cfg.ckpt_min_epochs}.')
+    parser.add_argument('-d', type=int, default=0, help=f'Set to 1 for deterministic but slow training. Default = 0.')
     parser.add_argument('-e', type=int, default=cfg.num_epochs, help=f'Number of epochs. Default = {cfg.num_epochs}.')
     parser.add_argument('-f', type=str, default=cfg.training_db, help=f'Name of training database. Default = {cfg.training_db}.')
     parser.add_argument('-m', type=int, default=0, help='If 1, load a saved model, else train from scratch. Default = 0.')
@@ -279,11 +307,11 @@ if __name__ == '__main__':
     parser.add_argument('-t', type=float, default=cfg.test_portion, help=f'Test portion. Default = {cfg.test_portion}')
     parser.add_argument('-u', type=int, default=1, help='1 = If 1, train a multi-label classifier. Default = 1.')
     parser.add_argument('-v', type=int, default=1, help='Verbosity (0-2, 0 is minimal, 2 includes graph of model). Default = 1.')
-    parser.add_argument('-z', type=int, default=cfg.seed, help=f'Integer seed for random number generators. Default = {cfg.seed}. If specified, other settings to increase repeatability will also be enabled, which slows down training.')
 
     args = parser.parse_args()
 
     cfg.ckpt_min_epochs = args.c
+    cfg.deterministic = (args.d == 1)
     cfg.num_epochs = args.e
     cfg.training_db = args.f
     cfg.eff_config = args.g
@@ -292,21 +320,15 @@ if __name__ == '__main__':
     cfg.test_portion = args.t
     cfg.multi_label = (args.u == 1)
     cfg.verbosity = args.v
-    cfg.seed = args.z
 
-    if cfg.seed != None:
-        # these settings make results more reproducible, which is very useful when tuning parameters
-        os.environ['PYTHONHASHSEED'] = str(cfg.seed)
-        # tf.config.experimental.enable_op_determinism() # uncomment this for more determinism, but MUCH slower
-        random.seed(cfg.seed)
-        np.random.seed(cfg.seed)
-        tf.random.set_seed(cfg.seed)
-        tf.config.threading.set_inter_op_parallelism_threads(1)
-        tf.config.threading.set_intra_op_parallelism_threads(1)
+    if cfg.verbosity > 0:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d %(message)s', datefmt='%H:%M:%S')
 
-    # mixed precision trains 25-30% faster, but limits portability
+    if cfg.deterministic:
+        set_deterministic()
+
     if cfg.mixed_precision:
-        keras.mixed_precision.set_global_policy("mixed_float16")
+        set_mixed_precision()
 
     trainer = Trainer()
     trainer.run()
