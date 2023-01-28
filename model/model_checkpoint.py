@@ -1,5 +1,6 @@
 # Save the model when specified by the parameters.
 
+import logging
 import os
 import shutil
 
@@ -23,13 +24,14 @@ class ModelCheckpoint(keras.callbacks.Callback):
             val_accuracy = 0
 
         self.best_val_accuracy = max(val_accuracy, self.best_val_accuracy)
-        
+
         if epoch >= self.min_epochs - 1 and val_accuracy >= self.min_val_accuracy \
         and (not self.save_best_only or (val_accuracy - self.saved_val_accuracy > .0001)):
-            print(f'\nSaving model checkpoint with val_accuracy = {val_accuracy:.4f}')
+            print()
+            logging.info(f'Saving model checkpoint with val_accuracy = {val_accuracy:.4f}')
             self.model.save(self.path)
             self.saved_val_accuracy = val_accuracy
-            
+
             # this lets us compare results at different epochs on additional data later
             if self.copy_ckpt:
                 dest_path = f'{self.path}-e{epoch + 1}'
@@ -37,4 +39,3 @@ class ModelCheckpoint(keras.callbacks.Callback):
                     shutil.rmtree(dest_path)
 
                 shutil.copytree(self.path, dest_path)
-        
