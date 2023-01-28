@@ -179,7 +179,8 @@ def EfficientNetV2(
     return model
 
 # Configurations a* were added for HawkEars;
-# Using squeeze-and-excitation blocks (se_ratio > 0) makes the model smaller but slower
+# Using squeeze-and-excitation blocks (se_ratio > 0) makes the model smaller
+# but training is much slower and they don't improve HawkEars recall and precision
 BLOCK_CONFIGS = {
     "a0": {  # custom 3-layer (~300K trainable parameters)
         "first_conv_filter": 32,
