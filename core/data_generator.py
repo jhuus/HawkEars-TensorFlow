@@ -1,5 +1,6 @@
 # Select and shuffle a random subset of available data, and apply data augmentation techniques.
 
+import logging
 import random
 import sys
 
@@ -12,16 +13,12 @@ from core import config as cfg
 from core import util
 from core import plot
 
-CACHE_LEN = 1000   # cache this many noise specs for performance
+CACHE_LEN = 1000   # cache this many white noise spectrograms for performance
 
 # indexes of augmentation types
-BLUR_INDEX = 0      # so self.probs[0] refers to blur
-FADE_INDEX = 1
-WHITE_NOISE_INDEX = 2
-PINK_NOISE_INDEX = 3
-REAL_NOISE_INDEX = 4
-SHIFT_INDEX = 5
-SPECKLE_INDEX = 6
+WHITE_NOISE_INDEX = 0
+SHIFT_INDEX = 1
+SPECKLE_INDEX = 2
 
 class DataGenerator():
     def __init__(self, db, x_train, y_train, train_class):
@@ -29,40 +26,29 @@ class DataGenerator():
         self.x_train = x_train
         self.y_train = y_train
         self.train_class = train_class
-
-        freqs = np.array([cfg.blur_freq, cfg.fade_freq, cfg.white_noise_freq, cfg.pink_noise_freq,
-            cfg.real_noise_freq, cfg.shift_freq, cfg.speckle_freq])
+        self.set_probabilities()
 
         self.indices = np.arange(y_train.shape[0])
         if cfg.augmentation:
-            # convert relative frequencies to probability ranges in [0, 1]
-            sum = np.sum(freqs)
-            probs = freqs / sum
-            self.probs = np.zeros(SPECKLE_INDEX + 1)
-            self.probs[0] = probs[0]
-            for i in range(1, SPECKLE_INDEX + 1):
-                self.probs[i] = self.probs[i - 1] + probs[i]
-
             # create some white noise
             self.white_noise = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
             for i in range(CACHE_LEN):
-                self.white_noise[i] = skimage.util.random_noise(self.white_noise[i], mode='gaussian', seed=cfg.seed, var=cfg.noise_variance, clip=True)
-                self.white_noise[i] /= np.max(self.white_noise[i]) # scale so max value is 1
-
-            # create some pink noise
-            self.pink_noise = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
-            for i in range(CACHE_LEN):
-                self.pink_noise[i] = self.audio.pink_noise()
-
-            # get some noise spectrograms from the database
-            results = db.get_spectrogram_by_subcat_name('Noise')
-            self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
-            for i, r in enumerate(results):
-                self.real_noise[i] = util.expand_spectrogram(r.value)
+                self.white_noise[i] = self._get_white_noise(cfg.white_noise_variance)
 
             self.speckle = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
             for i in range(CACHE_LEN):
-                self.speckle[i] = skimage.util.random_noise(self.speckle[i], mode='gaussian', seed=cfg.seed, var=cfg.speckle_variance, clip=True)
+                self.speckle[i] = self._get_white_noise(cfg.speckle_variance)
+
+    # get relative weights of augmentation types and convert to probability ranges in [0, 1]
+    def set_probabilities(self):
+        weights = np.array([cfg.white_noise_weight, cfg.shift_weight, cfg.speckle_weight])
+
+        sum = np.sum(weights)
+        probs = weights / sum
+        self.probs = np.zeros(SPECKLE_INDEX + 1)
+        self.probs[0] = probs[0]
+        for i in range(1, SPECKLE_INDEX + 1):
+            self.probs[i] = self.probs[i - 1] + probs[i]
 
     # this is called once per epoch to generate the spectrograms
     def __call__(self):
@@ -71,11 +57,13 @@ class DataGenerator():
             spec = util.expand_spectrogram(self.x_train[id])
             label = self.y_train[id].astype(np.float32)
 
+            other_id = None
             if cfg.augmentation and cfg.multi_label and self.train_class[id] != 'Noise':
                 prob = random.uniform(0, 1)
 
                 if prob < cfg.prob_merge:
-                    spec, label = self.merge_specs(spec, label, self.train_class[id])
+                    spec, label = self._merge_specs(spec, label, self.train_class[id])
+                    spec = self._normalize_spec(spec)
 
             if cfg.augmentation:
                 prob = random.uniform(0, 1)
@@ -83,75 +71,59 @@ class DataGenerator():
                     prob = random.uniform(0, 1)
 
                     # it's very important to check these in this order
-                    if prob < self.probs[BLUR_INDEX]:
-                        spec = self._blur(spec)
-                    elif prob < self.probs[FADE_INDEX]:
-                        spec = self._fade(spec)
-                    elif prob < self.probs[WHITE_NOISE_INDEX]:
-                        spec = self._add_noise(spec, self.white_noise)
-                    elif prob < self.probs[PINK_NOISE_INDEX]:
-                        spec = self._add_noise(spec, self.pink_noise)
-                    elif prob < self.probs[REAL_NOISE_INDEX]:
-                        spec = self._add_noise(spec, self.real_noise)
+                    if prob < self.probs[WHITE_NOISE_INDEX]:
+                        spec = self._add_white_noise(spec)
                     elif prob < self.probs[SHIFT_INDEX]:
                         spec = self._shift_horizontal(spec)
                     else:
                         spec = self._speckle(spec)
 
-            # reduce values slightly
-            spec *= random.uniform(cfg.min_mult, cfg.max_mult)
+                    spec = self._normalize_spec(spec)
+
+                # reduce the max value from 1
+                spec *= random.uniform(cfg.min_fade, cfg.max_fade)
 
             yield (spec.astype(np.float32), label)
 
+    # add white noise to the spectrogram
+    def _add_white_noise(self, spec):
+        index = random.randint(0, len(self.white_noise) - 1)
+        spec += self.white_noise[index]
+        return spec
+
+    # return a white noise spectrogram with the given variance
+    def _get_white_noise(self, variance):
+        white_noise = np.zeros((1, cfg.spec_height, cfg.spec_width, 1))
+        white_noise[0] = 1 + skimage.util.random_noise(white_noise[0], mode='gaussian', var=variance, clip=False)
+        white_noise[0] -= np.min(white_noise) # set min = 0
+        white_noise[0] /= np.max(white_noise) # set max = 1
+        return white_noise[0]
+
     # pick a random spectrogram and merge it with the given one
-    def merge_specs(self, spec, label, class_name):
+    def _merge_specs(self, spec, label, class_name):
         index = random.randint(0, len(self.indices) - 1)
         other_id = self.indices[index]
 
-        # loop until we get a different class that is not noise
-        while self.train_class == 'Noise' or self.train_class == class_name:
+        # loop until we get a different class
+        while self.train_class == class_name:
             index = random.randint(0, len(self.indices) - 1)
             other_id = self.indices[index]
 
         other_spec = util.expand_spectrogram(self.x_train[other_id])
         spec += other_spec
-        spec = spec.clip(0, 1)
         label += self.y_train[other_id].astype(np.float32)
         return spec, label
 
-    # add noise to the spectrogram
-    def _add_noise(self, spec, noise):
-        index = random.randint(0, len(noise) - 1)
-        spec = spec + noise[index] * random.uniform(cfg.noise_min, cfg.noise_max)
-        spec /= np.max(spec)
-        spec = spec.clip(0, 1)
-
-        return spec
-
-    # blur the spectrogram (larger values of sigma lead to more blurring)
-    def _blur(self, spec, min_sigma=0.1, max_sigma=1.0):
-        sigma = random.uniform(min_sigma, max_sigma)
-        spec = skimage.filters.gaussian(spec, sigma=sigma)
-
-        # renormalize to [0, 1]
+    # normalize so max value is 1
+    def _normalize_spec(self, spec):
         max = spec.max()
         if max > 0:
             spec = spec / max
 
         return spec
 
-    # fade the spectrogram (smaller factors and larger min_vals lead to more fading);
-    # defaults don't have a big visible effect but do fade values a little, and it's
-    # important to preserve very faint spectrograms
-    def _fade(self, spec):
-        factor = random.uniform(cfg.min_fade_factor, cfg.max_fade_factor)
-        spec *= factor
-        spec[spec < cfg.min_fade_val] = 0 # clear values near zero
-        spec *= 1/factor # rescale so max = 1
-        spec = np.clip(spec, 0, 1) # just to be safe
-        return spec
-
-    # perform a random horizontal shift of the spectrogram
+    # perform a random horizontal shift of the spectrogram, using simple heuristics
+    # to avoid shifting the important part of the signal past the edge
     def _shift_horizontal(self, spec):
         # detect left-shifted spectrograms, so we don't shift further left
         left_part = spec[:cfg.spec_height, :10]
@@ -176,9 +148,8 @@ class DataGenerator():
         spec = np.roll(spec, shift=pixels, axis=1)
         return spec
 
-    # multiply by random pixels (larger variances lead to more speckling)
+    # add a copy multiplied by random pixels (larger variances lead to more speckling)
     def _speckle(self, spec):
         index = random.randint(0, CACHE_LEN - 1)
-        spec = spec + spec * self.speckle[index]
-        spec = spec.clip(0, 1)
+        spec += spec * self.speckle[index]
         return spec
