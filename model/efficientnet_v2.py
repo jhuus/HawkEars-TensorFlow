@@ -178,59 +178,34 @@ def EfficientNetV2(
     model = keras.models.Model(inputs=inputs, outputs=nn, name=model_name)
     return model
 
-# Configurations a## were added for HawkEars;
+# Configurations a* were added for HawkEars;
 # Using squeeze-and-excitation blocks (se_ratio > 0) makes the model smaller but slower
 BLOCK_CONFIGS = {
-    "a0": {  # custom 3-layer (fastest option)
+    "a0": {  # custom 3-layer (~300K trainable parameters)
         "first_conv_filter": 32,
-        "output_conv_filter": 256,
         "expands": [1, 2, 4],
-        "out_channels": [8, 16, 32],
+        "out_channels": [16, 32, 48],
         "depths": [1, 2, 2],
         "strides": [1, 2, 2],
-        "se_ratios": [0, 0, 0.25]
+        "se_ratios": [0, 0, 0]
     },
-    "a1": {  # custom 4-layer (~374K trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 2, 4, 4],
-        "out_channels": [16, 32, 48, 64],
-        "depths": [1, 2, 2, 3],
-        "strides": [1, 2, 2, 2],
-        "se_ratios": [0, 0, 0, 0.25]
-    },
-    "a1.1": {  # custom 4-layer (~650K trainable parameters)
+    "a1": {  # custom 4-layer (~1.38M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 4],
         "out_channels": [16, 32, 64, 96],
         "depths": [1, 2, 2, 3],
         "strides": [1, 2, 2, 2],
-        "se_ratios": [0, 0, 0, 0.25]
+        "se_ratios": [0, 0, 0, 0]
     },
-    "a2": {  # custom 4-layer (~1.04M trainable parameters)
+    "a2": {  # custom 4-layer (~2.75M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 6],
         "out_channels": [16, 32, 64, 128],
         "depths": [1, 2, 2, 3],
         "strides": [1, 2, 2, 2],
-        "se_ratios": [0, 0, 0, 0.25]
+        "se_ratios": [0, 0, 0, 0]
     },
-    "a3": {  # custom 5-layer (~1.9M trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 112],
-        "depths": [1, 2, 2, 3, 5],
-        "strides": [1, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0.25, 0.25]
-    },
-    "a3b": {  # custom 5-layer (~2.5M trainable parameters, a3 with one SE block)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 112],
-        "depths": [1, 2, 2, 3, 5],
-        "strides": [1, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0, 0.25]
-    },
-    "a3c": {  # custom 5-layer (~5.1M trainable parameters, a3 with no SE blocks)
+    "a3": {  # custom 5-layer (~5.1M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 4, 6],
         "out_channels": [16, 32, 48, 96, 112],
@@ -238,31 +213,7 @@ BLOCK_CONFIGS = {
         "strides": [1, 2, 2, 1, 2],
         "se_ratios": [0, 0, 0, 0, 0]
     },
-    "a4": {  # custom 6-layer (~2.4M trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 5],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0.25, 0.25, 0.25]
-    },
-    "a4b": {  # custom 6-layer (~3.0M trainable parameters, a4 with two SE blocks)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 5],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0, 0.25, 0.25]
-    },
-    "a4c": {  # custom 6-layer (~4.3M trainable parameters, a4 with one SE block)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 5],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0, 0, 0.25]
-    },
-    "a4d": {  # custom 6-layer (~7M trainable parameters, a4 with no SE blocks)
+    "a4": {  # custom 6-layer (~7M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 4, 4, 6],
         "out_channels": [16, 32, 48, 96, 96, 112],
@@ -270,31 +221,7 @@ BLOCK_CONFIGS = {
         "strides": [1, 2, 2, 2, 1, 2],
         "se_ratios": [0, 0, 0, 0, 0, 0]
     },
-    "a5": {  # custom 6-layer (~2.5M trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 6],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0.25, 0.25, 0.25]
-    },
-    "a5b": {  # custom 6-layer (~3.2M trainable parameters, a5 with two SE blocks)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 6],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0, 0.25, 0.25]
-    },
-    "a5c": {  # custom 6-layer (~4.5M trainable parameters, a5 with one SE block)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 6],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0, 0, 0.25]
-    },
-    "a5d": {  # custom 6-layer (~7.7M trainable parameters, a5 with no SE blocks)
+    "a5": {  # custom 6-layer (~7.7M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 4, 4, 6],
         "out_channels": [16, 32, 48, 96, 96, 112],
@@ -302,69 +229,21 @@ BLOCK_CONFIGS = {
         "strides": [1, 2, 2, 2, 1, 2],
         "se_ratios": [0, 0, 0, 0, 0, 0]
     },
-    "a6": {  # custom 6-layer (~2.7M trainable parameters)
+    "a6": {  # custom 6-layer (~8.5M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 4, 4, 6],
         "out_channels": [16, 32, 48, 96, 96, 112],
         "depths": [1, 2, 2, 3, 5, 7],
         "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0.25, 0.25, 0.25]
+        "se_ratios": [0, 0, 0, 0, 0, 0]
     },
-    "a6b": {  # custom 6-layer (~3.4M trainable parameters, a6 with two SE blocks)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 7],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0, 0.25, 0.25]
-    },
-    "a6c": {  # custom 6-layer (~4.7M trainable parameters, a6 with one SE block)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 7],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0, 0, 0.25]
-    },
-    "a7": {  # custom 6-layer (~3.0M trainable parameters)
+    "a7": {  # custom 6-layer (~9.2M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 4, 4, 6],
         "out_channels": [16, 32, 48, 96, 96, 112],
         "depths": [1, 2, 2, 3, 5, 8],
         "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0.25, 0.25, 0.25]
-    },
-    "a7b": {  # custom 6-layer (~3.5M trainable parameters, a7 with only two SE blocks)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 8],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0, 0.25, 0.25]
-    },
-    "a7c": {  # custom 6-layer (~4.9M trainable parameters, a7 with only one SE block)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 96, 112],
-        "depths": [1, 2, 2, 3, 5, 8],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0, 0, 0.25]
-    },
-    "a8": {  # custom 6-layer (~2.7M trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 112, 128],
-        "depths": [1, 2, 2, 3, 5, 5],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0.25, 0.25, 0.25]
-    },
-    "a9": {  # custom 6-layer (~3.0M trainable parameters)
-        "first_conv_filter": 32,
-        "expands": [1, 4, 4, 4, 4, 6],
-        "out_channels": [16, 32, 48, 96, 112, 128],
-        "depths": [1, 2, 2, 3, 5, 7],
-        "strides": [1, 2, 2, 2, 1, 2],
-        "se_ratios": [0, 0, 0, 0.25, 0.25, 0.25]
+        "se_ratios": [0, 0, 0, 0, 0, 0]
     },
     "b0": {  # width 1.0, depth 1.0 (~5.8M trainable parameters)
         "first_conv_filter": 32,
