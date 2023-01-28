@@ -1,9 +1,9 @@
 # Audio processing, especially extracting and returning spectrograms.
 
+import json
 import logging
 import random
 
-import colorednoise as cn
 import cv2
 import ffmpeg
 import numpy as np
@@ -88,6 +88,33 @@ class Audio:
                 specs[i] = specs[i] / max
 
             specs[i] = specs[i].clip(0, 1)
+
+    # stereo recordings sometimes have one clean channel and one noisy one;
+    # so rather than just merge them, use heuristics to pick the cleaner one
+    def _choose_channel(self, left_channel, right_channel, scale):
+        left_signal = scale * np.frombuffer(left_channel, '<i2').astype(np.float32)
+        right_signal = scale * np.frombuffer(right_channel, '<i2').astype(np.float32)
+        seconds = int(len(left_signal) / cfg.sampling_rate)
+        max_offset = min(seconds - cfg.segment_len, 3 * cfg.segment_len) # look at the first 3 non-overlapping segments
+        offsets = [i for i in range(0, max_offset, cfg.segment_len)]
+        self.signal = left_signal
+        left_specs = self.get_spectrograms(offsets, multi_spec=True)
+        self.signal = right_signal
+        right_specs = self.get_spectrograms(offsets, multi_spec=True)
+        left_sum = 0
+        for spec in left_specs:
+            left_sum += spec.sum()
+
+        right_sum = 0
+        for spec in right_specs:
+            right_sum += spec.sum()
+
+        if left_sum > right_sum:
+            # more noise in the left channel
+            return right_signal, right_channel
+        else:
+            # more noise in the right channel
+            return left_signal, left_channel
 
     # look for a sound in the given frequency (height) range, in the first segment of the spec;
     # if found, return the starting offset in seconds
@@ -177,15 +204,6 @@ class Audio:
 
         return offsets
 
-    # return a pink noise spectrogram with values in range [0, 1]
-    def pink_noise(self):
-        beta = random.uniform(1.2, 1.6)
-        samples = cfg.segment_len * cfg.sampling_rate
-        segment = cn.powerlaw_psd_gaussian(beta, samples)
-        spec = self._get_raw_spectrogram(segment)
-        spec = spec / spec.max() # normalize to [0, 1]
-        return spec.reshape((cfg.spec_height, cfg.spec_width, 1))
-
     # return a white noise spectrogram with values in range [0, 1]
     def white_noise(self, mean=0, stdev=1):
         samples = cfg.segment_len * cfg.sampling_rate
@@ -260,29 +278,40 @@ class Audio:
         spectrogram = None
 
         try:
-            if cfg.high_pass_filter:
-                bytes, _ = (ffmpeg
-                    .input(path)
-                    .filter('highpass', frequency=cfg.min_audio_freq, width_type='q', width=.5)
-                    .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{cfg.sampling_rate}')
-                    .overwrite_output()
-                    .run(capture_stdout=True, capture_stderr=True, quiet=True))
-            else:
+            self.have_signal = True
+            scale = 1.0 / float(1 << ((16) - 1))
+            info = ffmpeg.probe(path)
+            if info['streams'][0]['channels'] == 1:
                 bytes, _ = (ffmpeg
                     .input(path)
                     .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{cfg.sampling_rate}')
                     .overwrite_output()
                     .run(capture_stdout=True, capture_stderr=True, quiet=True))
 
-            # convert byte array to float array, and then to a numpy array
-            scale = 1.0 / float(1 << ((16) - 1))
-            self.signal = scale * np.frombuffer(bytes, '<i2').astype(np.float32)
-            self.have_signal = True
+                # convert byte array to float array, and then to a numpy array
+                self.signal = scale * np.frombuffer(bytes, '<i2').astype(np.float32)
+            else:
+                left_channel, _ = (ffmpeg
+                    .input(path)
+                    .filter('channelsplit', channel_layout='stereo', channels='FL')
+                    .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{cfg.sampling_rate}')
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True, quiet=True))
+
+                right_channel, _ = (ffmpeg
+                    .input(path)
+                    .filter('channelsplit', channel_layout='stereo', channels='FR')
+                    .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{cfg.sampling_rate}')
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True, quiet=True))
+
+                self.signal, bytes = self._choose_channel(left_channel, right_channel, scale)
 
             if keep_bytes:
                 self.bytes = bytes # when we want the raw audio, e.g. to write a segment to a wav file
 
         except ffmpeg.Error as e:
+            self.have_signal = False
             tokens = e.stderr.decode().split('\n')
             if len(tokens) >= 2:
                 print(f'Caught exception in audio load: {tokens[-2]}')
