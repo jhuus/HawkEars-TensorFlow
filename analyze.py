@@ -339,7 +339,7 @@ class Analyzer:
     def _save_labels(self, labels, file_path):
         basename = os.path.basename(file_path)
         name, ext = os.path.splitext(basename)
-        output_path = os.path.join(self.output_path, f'{name}_HawkEars_Audacity_Labels.txt')
+        output_path = os.path.join(self.output_path, f'{name}_HawkEars.txt')
         logging.info(f'Writing output to {output_path}')
         try:
             with open(output_path, 'w') as file:
