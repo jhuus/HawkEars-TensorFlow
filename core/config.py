@@ -58,7 +58,7 @@ check_adjacent = True        # omit label unless adjacent segment matches
 adjacent_prob_factor = 0.65  # when checking if adjacent segment matches species, use self.min_prob times this
 reset_model_counter = 10     # in analysis, reset the model every n loops to avoid running out of GPU memory
 top_n = 6 # number of top matches to log in debug mode
-min_location_freq = .01      # ignore if species frequency less than this for location/week
+min_location_freq = .0001    # ignore if species frequency less than this for location/week
 file_date_regex = '\S+_(\d+)_.*' # regex to extract date from file name (e.g. HNCAM015_20210529_161122.mp3)
 file_date_regex_group = 1    # use group at offset 1
 
