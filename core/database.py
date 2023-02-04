@@ -70,7 +70,8 @@ class Database:
                     Value BLOB NOT NULL,
                     Offset REAL NOT NULL,
                     Audio BLOB,
-                    Embedding BLOB)
+                    Embedding BLOB,
+                    Ignore TEXT)
             '''
             cursor.execute(query)
 
@@ -427,17 +428,23 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database delete_spectrogram_by_subcat_name: {e}')
 
-    def get_spectrogram(self, field=None, value=None, include_audio=False, include_embedding=False):
+    def get_spectrogram(self, field=None, value=None, include_audio=False, include_embedding=False, include_ignored=False):
         try:
-            fields = 'ID, RecordingID, Value, Offset'
+            fields = 'ID, RecordingID, Value, Offset, Ignore'
             if include_audio:
                 fields += ', Audio'
             if include_embedding:
                 fields += ', Embedding'
 
             query = f'SELECT {fields} FROM Spectrogram'
-            if field is not None:
-                query += f' WHERE {field} = "{value}"'
+            if field is None:
+                if not include_ignored:
+                    query += f' WHERE Ignore IS NOT "Y"'
+            else:
+                if include_ignored:
+                    query += f' WHERE {field} = "{value}"'
+                else:
+                    query += f' WHERE {field} = "{value}" AND Ignore IS NOT "Y"'
 
             query += f' Order BY ID'
 
@@ -449,94 +456,7 @@ class Database:
 
             results = []
             for row in rows:
-                id, recordingID, value, offset = row[:4]
-                if include_audio:
-                    audio = row[4]
-                    if include_embedding:
-                        embedding = row[5]
-                    else:
-                        embedding = None
-                elif include_embedding:
-                    audio = None
-                    embedding = row[4]
-                else:
-                    audio = None
-                    embedding = None
-
-                result = SimpleNamespace(id=id, recording_id=recordingID, value=value, offset=offset, audio=audio, embedding=embedding)
-                results.append(result)
-
-            return results
-
-        except sqlite3.Error as e:
-            print(f'Error in database get_spectrogram: {e}')
-
-    def get_spectrogram_by_recid_and_offset(self, recording_id, offset, include_audio=False, include_embedding=False):
-        try:
-            fields = 'ID, RecordingID, Value, Offset'
-            if include_audio:
-                fields += ', Audio'
-            if include_embedding:
-                fields += ', Embedding'
-
-            query = f'''
-                SELECT {fields} FROM Spectrogram
-                WHERE RecordingID = {recording_id}
-                AND Offset > {offset - .01}
-                AND Offset < {offset + .01}
-            '''
-
-            cursor = self.conn.cursor()
-            cursor.execute(query)
-            rows = cursor.fetchall()
-            if rows is None or len(rows) == 0:
-                return None
-
-            row = rows[0]
-            id, recordingID, value, offset = row[:4]
-            if include_audio:
-                audio = row[4]
-                if include_embedding:
-                    embedding = row[5]
-                else:
-                    embedding = None
-            elif include_embedding:
-                audio = None
-                embedding = row[4]
-            else:
-                audio = None
-                embedding = None
-
-            result = SimpleNamespace(id=id, recording_id=recordingID, value=value, offset=offset, audio=audio, embedding=embedding)
-            return result
-
-        except sqlite3.Error as e:
-            print(f'Error in database get_spectrogram_by_recid_and_offset: {e}')
-
-    def get_spectrogram_by_subcat_name(self, subcategory_name, include_audio=False, include_embedding=False):
-        try:
-            fields = 'Spectrogram.ID, RecordingID, Recording.FileName, Value, Offset'
-            if include_audio:
-                fields += ', Audio'
-            if include_embedding:
-                fields += ', Embedding'
-
-            query = f'''
-                SELECT {fields} FROM Spectrogram
-                INNER JOIN Recording ON RecordingID = Recording.ID
-                WHERE RecordingID IN
-                    (SELECT ID FROM Recording WHERE SubcategoryID IN
-                        (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}"))
-                ORDER BY Recording.FileName, Offset
-            '''
-
-            cursor = self.conn.cursor()
-            cursor.execute(query)
-            rows = cursor.fetchall()
-
-            results = []
-            for row in rows:
-                id, recordingID, filename, value, offset = row[:5]
+                id, recordingID, value, offset, ignore = row[:5]
                 if include_audio:
                     audio = row[5]
                     if include_embedding:
@@ -550,7 +470,105 @@ class Database:
                     audio = None
                     embedding = None
 
-                result = SimpleNamespace(id=id, recording_id=recordingID, filename=filename, value=value, offset=offset, audio=audio, embedding=embedding)
+                result = SimpleNamespace(id=id, recording_id=recordingID, value=value, offset=offset, ignore=ignore, audio=audio, embedding=embedding)
+                results.append(result)
+
+            return results
+
+        except sqlite3.Error as e:
+            print(f'Error in database get_spectrogram: {e}')
+
+    def get_spectrogram_by_recid_and_offset(self, recording_id, offset, include_audio=False, include_embedding=False, include_ignored=False):
+        try:
+            fields = 'ID, RecordingID, Value, Offset, Ignore'
+            if include_audio:
+                fields += ', Audio'
+            if include_embedding:
+                fields += ', Embedding'
+
+            if include_ignored:
+                where_clause = f'WHERE RecordingID = {recording_id}'
+            else:
+                where_clause = f'WHERE RecordingID = {recording_id} AND Ignore IS NOT "Y"'
+
+            query = f'''
+                SELECT {fields} FROM Spectrogram
+                {where_clause}
+                AND Offset > {offset - .01}
+                AND Offset < {offset + .01}
+            '''
+
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            if rows is None or len(rows) == 0:
+                return None
+
+            row = rows[0]
+            id, recordingID, value, offset, ignore = row[:5]
+            if include_audio:
+                audio = row[5]
+                if include_embedding:
+                    embedding = row[6]
+                else:
+                    embedding = None
+            elif include_embedding:
+                audio = None
+                embedding = row[5]
+            else:
+                audio = None
+                embedding = None
+
+            result = SimpleNamespace(id=id, recording_id=recordingID, value=value, offset=offset, ignore=ignore, audio=audio, embedding=embedding)
+            return result
+
+        except sqlite3.Error as e:
+            print(f'Error in database get_spectrogram_by_recid_and_offset: {e}')
+
+    def get_spectrogram_by_subcat_name(self, subcategory_name, include_audio=False, include_embedding=False, include_ignored=False):
+        try:
+            fields = 'Spectrogram.ID, RecordingID, Recording.FileName, Value, Offset, Ignore'
+            if include_audio:
+                fields += ', Audio'
+            if include_embedding:
+                fields += ', Embedding'
+
+            if include_ignored:
+                extra_clause = ''
+            else:
+                extra_clause = 'AND Ignore IS NOT "Y"'
+
+            query = f'''
+                SELECT {fields} FROM Spectrogram
+                INNER JOIN Recording ON RecordingID = Recording.ID
+                WHERE RecordingID IN
+                    (SELECT ID FROM Recording WHERE SubcategoryID IN
+                        (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}"))
+                {extra_clause}
+                ORDER BY Recording.FileName, Offset
+            '''
+
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            rows = cursor.fetchall()
+
+            results = []
+            for row in rows:
+                id, recordingID, filename, value, offset, ignore = row[:6]
+                if include_audio:
+                    audio = row[6]
+                    if include_embedding:
+                        embedding = row[7]
+                    else:
+                        embedding = None
+                elif include_embedding:
+                    audio = None
+                    embedding = row[6]
+                else:
+                    audio = None
+                    embedding = None
+
+                result = SimpleNamespace(id=id, recording_id=recordingID, filename=filename, value=value, offset=offset, ignore=ignore, audio=audio, embedding=embedding)
                 results.append(result)
 
             return results
@@ -558,14 +576,20 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database get_spectrogram_by_subcat_name: {e}')
 
-    def get_spectrogram_count(self, subcategory_name):
+    def get_spectrogram_count(self, subcategory_name, include_ignored=False):
         try:
+            if include_ignored:
+                extra_clause = ''
+            else:
+                extra_clause = 'AND Ignore IS NOT "Y"'
+
             query = f'''
                 SELECT COUNT(*)
                 FROM Spectrogram
                 WHERE RecordingID in
                     (SELECT ID From Recording WHERE SubcategoryID =
                         (SELECT ID FROM Subcategory WHERE NAME = "{subcategory_name}"))
+                {extra_clause}
             '''
             cursor = self.conn.cursor()
             cursor.execute(query)
