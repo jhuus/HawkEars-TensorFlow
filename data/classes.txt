@@ -1,11 +1,9 @@
 # These classes are included in training, but ignored in analysis (see ignore.txt)
 Canine,Canine
-Chipmunk,Chipmunk
-Eastern Gray Squirrel,Eastern Gray Squirrel
+Squirrel,Squirrel
 Gray Treefrog,Gray Treefrog
 Noise,Noise
 Other,Other
-Red Squirrel,Red Squirrel
 Rooster,Rooster
 Spring Peeper,Spring Peeper
 
@@ -62,7 +60,6 @@ Broad-winged Hawk,BWHA
 Brown Creeper,BRCR
 Brown Thrasher,BRTH
 Brown-headed Cowbird,BHCO
-California Gull,CAGU
 Canada Goose,CANG
 Canada Jay,CAJA
 Canada Warbler,CAWA
