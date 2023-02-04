@@ -4,6 +4,7 @@
 
 import argparse
 import logging
+from multiprocessing import Process
 import os
 import re
 import sys
@@ -13,6 +14,7 @@ import warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' # 1 = no info, 2 = no warnings, 3 = no errors
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 
+from numba import cuda
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
@@ -22,6 +24,15 @@ from core import config as cfg
 from core import frequency_db
 from core import plot
 from core import util
+
+def _get_file_list(input_path):
+    if os.path.isdir(input_path):
+        return util.get_audio_files(input_path)
+    elif util.is_audio_file(input_path):
+        return [input_path]
+    else:
+        logging.error(f'Error: {input_path} is not a directory or an audio file.')
+        sys.exit()
 
 class ClassInfo:
     def __init__(self, name, code, ignore):
@@ -45,7 +56,7 @@ class Label:
         self.end_time = end_time
 
 class Analyzer:
-    def __init__(self, input_path, output_path, start_time, end_time, date_str, latitude, longitude, debug_mode):
+    def __init__(self, input_path, output_path, start_time, end_time, date_str, latitude, longitude, debug_mode, merge):
 
         self.input_path = input_path.strip()
         self.output_path = output_path.strip()
@@ -55,6 +66,7 @@ class Analyzer:
         self.latitude = latitude
         self.longitude = longitude
         self.debug_mode = (debug_mode == 1)
+        self.merge_labels = (merge == 1)
 
         if self.start_seconds is not None and self.end_seconds is not None and self.end_seconds < self.start_seconds + cfg.segment_len:
                 logging.error(f'Error: end time must be >= start time + {cfg.segment_len} seconds')
@@ -75,7 +87,6 @@ class Analyzer:
         self.class_infos = self._get_class_infos()
         self.audio = audio.Audio()
         self._process_lat_lon_date()
-        #self.denoiser = keras.models.load_model("data/denoiser", compile=False)
 
     # process latitude, longitude and date
     def _process_lat_lon_date(self):
@@ -251,15 +262,6 @@ class Analyzer:
 
         return spec_array
 
-        '''
-        denoised = self.denoiser.predict(spec_array, verbose=0)
-        for i in range(len(denoised)):
-            denoised[i] = denoised[i] / denoised[i].max() # make the max 1
-            denoised[i] = np.clip(denoised[i], 0, 1) # clip negative values
-
-        return denoised
-        '''
-
     def _analyze_file(self, file_path):
         logging.info(f'Analyzing {file_path}')
 
@@ -321,7 +323,7 @@ class Analyzer:
                         if probs[i - 1] < min_adj_prob and probs[i + 1] < min_adj_prob:
                             continue
 
-                    if prev_label != None and prev_label.end_time >= self.offsets[i]:
+                    if self.merge_labels and prev_label != None and prev_label.end_time >= self.offsets[i]:
                         # extend the previous label's end time (i.e. merge)
                         prev_label.end_time = end_time
                         prev_label.probability = max(use_prob, prev_label.probability)
@@ -363,27 +365,11 @@ class Analyzer:
 
         print("")
 
-    def run(self, start_time):
-        file_list = self._get_file_list()
-
-        # load the models
+    def run(self, file_list):
         self.model = keras.models.load_model(cfg.ckpt_path, compile=False)
 
         for i, file_path in enumerate(file_list):
             self._analyze_file(file_path)
-
-            # this helps to avoid running out of memory on GPU
-            if (i + 1) % cfg.reset_model_counter == 0:
-                keras.backend.clear_session()
-                del self.model
-                del self.audio
-                self.model = keras.models.load_model(cfg.ckpt_path, compile=False)
-                self.audio = audio.Audio()
-
-        elapsed = time.time() - start_time
-        minutes = int(elapsed) // 60
-        seconds = int(elapsed) % 60
-        logging.info(f'Elapsed time = {minutes}m {seconds}s')
 
 if __name__ == '__main__':
     check_adjacent = 1 if cfg.check_adjacent else 0
@@ -396,6 +382,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--debug', type=int, default=0, help='1 = debug mode (analyze one spectrogram only, and output several top candidates). Default = 0.')
     parser.add_argument('-e', '--end', type=str, default='', help='Optional end time in hh:mm:ss format, where hh and mm are optional.')
     parser.add_argument('-i', '--input', type=str, default='', help='Input path (single audio file or directory). No default.')
+    parser.add_argument('--merge', type=int, default=1, help=f'Specify 0 to not merge adjacent labels of same species. Default = 1, i.e. merge.')
     parser.add_argument('--date', type=str, default=None, help=f'Date in yyyymmdd, mmdd, or file. Specifying file extracts the date from the file name, using the reg ex defined in config.py.')
     parser.add_argument('--lat', type=float, default=None, help=f'Latitude')
     parser.add_argument('--lon', type=float, default=None, help=f'Longitude')
@@ -418,5 +405,18 @@ if __name__ == '__main__':
     cfg.min_prob = args.prob
     cfg.min_location_freq = args.min_freq
 
-    analyzer = Analyzer(args.input, args.output, args.start, args.end, args.date, args.lat, args.lon, args.debug)
-    analyzer.run(start_time)
+    file_list = _get_file_list(args.input)
+    start_idx = 0
+    while start_idx < len(file_list):
+        end_idx = min(start_idx + cfg.analyze_group_size, len(file_list))
+        analyzer = Analyzer(args.input, args.output, args.start, args.end, args.date, args.lat, args.lon, args.debug, args.merge)
+        p = Process(target=analyzer.run, args=((file_list[start_idx:end_idx],)))
+        p.start()
+        p.join()
+        start_idx += cfg.analyze_group_size
+
+    elapsed = time.time() - start_time
+    minutes = int(elapsed) // 60
+    seconds = int(elapsed) % 60
+    logging.info(f'Elapsed time = {minutes}m {seconds}s')
+
