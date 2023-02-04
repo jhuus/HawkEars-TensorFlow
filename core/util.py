@@ -103,14 +103,18 @@ def get_file_lines(path):
         print(f'Unable to open input file {path}')
         return []
 
-# return a dictionary mapping class names to banding codes, based on the classes file
-def get_class_dict(class_file_path=cfg.classes_file):
+# return a dictionary mapping class names to banding codes, based on the classes file;
+# if reverse=True, map codes to class names
+def get_class_dict(class_file_path=cfg.classes_file, reverse=False):
     lines = get_file_lines(class_file_path)
     class_dict = {}
     for line in lines:
         tokens = line.split(',')
         if len(tokens) == 2:
-            class_dict[tokens[0]] = tokens[1]
+            if reverse:
+                class_dict[tokens[1]] = tokens[0]
+            else:
+                class_dict[tokens[0]] = tokens[1]
 
     return class_dict
 
