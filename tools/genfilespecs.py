@@ -48,9 +48,9 @@ for file_name in os.listdir(root_dir):
             continue
 
         spec_len = int(min(max_spec_len, signal.shape[0] / rate))
-        width = int(spec_len * (cfg.spec_width / cfg.segment_len.SEGMENT_LEN))
+        width = int(spec_len * (cfg.spec_width / cfg.segment_len))
         if width < cfg.spec_width:
             continue
 
-        specs = audio_obj.get_spectrograms([0], seconds=spec_len, shape=(cfg.spec_height, width), check_noise=False, exponent=0.4, row_factor=0)
+        specs = audio_obj.get_spectrograms([0], seconds=spec_len)
         util.plot_spec(specs[0], image_path)
