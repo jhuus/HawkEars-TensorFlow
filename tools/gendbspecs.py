@@ -22,6 +22,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-f', type=str, default='../data/training.db', help='Database path.')
 parser.add_argument('-c', type=int, default=0, help='1 = center the images.')
 parser.add_argument('-g', type=int, default=0, help='1 = use gray scale.')
+parser.add_argument('-m', type=int, default=0, help='Mode 0 = exclude ignored specs, 1 = include ignored, 2 = only ignored. Default = 0.')
 parser.add_argument('-n', type=int, default=0, help='If > 0, stop after this many images. Default = 0.')
 parser.add_argument('-s', type=str, default='', help='Species name.')
 parser.add_argument('-o', type=str, default='', help='Output directory.')
@@ -33,6 +34,7 @@ args = parser.parse_args()
 db_path = args.f
 species_name = args.s
 prefix = args.p.lower()
+mode = args.m
 num_to_plot = args.n
 gray_scale = (args.g == 1)
 center = (args.c == 1)
@@ -46,8 +48,21 @@ if not os.path.exists(out_dir):
 db = database.Database(db_path)
 
 start_time = time.time()
-results = db.get_spectrogram_by_subcat_name(species_name)
-print(f'retrieved {len(results)} spectrograms from database')
+
+if mode == 0:
+    # include only if Ignore != 'Y'
+    results = db.get_spectrogram_by_subcat_name(species_name)
+elif mode == 1:
+    # include all
+    results = db.get_spectrogram_by_subcat_name(species_name, include_ignored=True)
+else:
+    # include only if Ignore == 'Y'
+    temp = db.get_spectrogram_by_subcat_name(species_name, include_ignored=True)
+    results = []
+    for result in temp:
+        if result.ignore == 'Y':
+            results.append(result)
+
 num_plotted = 0
 for r in results:
     if len(prefix) > 0 and not r.filename.lower().startswith(prefix):
