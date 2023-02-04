@@ -1,10 +1,7 @@
 Canine
-Chipmunk
-Eastern Gray Squirrel
 Gray Treefrog
 Noise
 Other
-Red Squirrel
 Rooster
 Spring Peeper
-
+Squirrel
