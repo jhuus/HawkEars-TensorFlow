@@ -17,16 +17,16 @@ seed = 1
 base_lr = .003          # base learning rate
 cos_decay_pad = 0       # larger values reduce cosine decay of learning rate
 batch_size = 32
-eff_config = 'a3'       # EfficientNet_v2 configuration to use ('r' for ResNest)
-eff_dropout = 0.4       # dropout rate for EfficientNext_V2 output block
-eff_drop_connect = 0.5  # dropout rate for EfficientNext_V2 non-output blocks
+eff_config = 'a4'       # EfficientNet_v2 configuration to use ('r' for ResNest)
+eff_dropout = 0.40      # dropout rate for EfficientNet_V2 output block
+eff_drop_connect = 0.50 # dropout rate for EfficientNet_V2 non-output blocks
 resnest_stages = 2      # if eff_config = 'r'
 resnest_blocks = [2,2]
-num_epochs = 1
-ckpt_min_epochs =  5    # min epochs before saving checkpoint
+num_epochs = 2
+ckpt_min_epochs =  1    # min epochs before saving checkpoint
 ckpt_min_val_accuracy = 0 # min validation accuracy before saving checkpoint
 copy_ckpt = True        # save a copy of each checkpoint
-label_smoothing = 0.15
+label_smoothing = 0.20
 
 load_saved_model = False
 mixed_precision = True  # mixed precision trains faster with large models, but slower with tiny models
@@ -48,7 +48,7 @@ speckle_weight = 0.04
 max_shift = 5            # max pixels for horizontal shift
 white_noise_variance = 0.001 # larger variances lead to more noise
 speckle_variance = .009
-min_fade = 0.1           # multiply values by a random float in [min_fade, max_fade]
+min_fade = 0.1          # multiply values by a random float in [min_fade, max_fade]
 max_fade = 1.0
 
 # analysis / inference
@@ -56,11 +56,11 @@ min_prob = 0.75              # minimum confidence level
 use_banding_codes = True     # use banding codes instead of species names in labels
 check_adjacent = True        # omit label unless adjacent segment matches
 adjacent_prob_factor = 0.65  # when checking if adjacent segment matches species, use self.min_prob times this
-reset_model_counter = 10     # in analysis, reset the model every n loops to avoid running out of GPU memory
 top_n = 6 # number of top matches to log in debug mode
 min_location_freq = .0001    # ignore if species frequency less than this for location/week
 file_date_regex = '\S+_(\d+)_.*' # regex to extract date from file name (e.g. HNCAM015_20210529_161122.mp3)
 file_date_regex_group = 1    # use group at offset 1
+analyze_group_size = 50      # do this many files, then reset to avoid running out of GPU memory
 
 # Soundalike groups are used in analysis / inference when a location is given.
 # For each soundalike species, eBird barchart data is accessed to get the maximum
