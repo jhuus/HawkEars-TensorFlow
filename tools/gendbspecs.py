@@ -13,13 +13,14 @@ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentfram
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 
+from core import config as cfg
 from core import database
 from core import plot
 from core import util
 
 # command-line arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('-f', type=str, default='../data/training.db', help='Database path.')
+parser.add_argument('-f', type=str, default=f'../data/{cfg.training_db}.db', help='Database path.')
 parser.add_argument('-c', type=int, default=0, help='1 = center the images.')
 parser.add_argument('-g', type=int, default=0, help='1 = use gray scale.')
 parser.add_argument('-m', type=int, default=0, help='Mode 0 = exclude ignored specs, 1 = include ignored, 2 = only ignored. Default = 0.')
