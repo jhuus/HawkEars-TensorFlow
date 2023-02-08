@@ -14,7 +14,6 @@ import warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' # 1 = no info, 2 = no warnings, 3 = no errors
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 
-from numba import cuda
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
@@ -25,7 +24,7 @@ from core import frequency_db
 from core import plot
 from core import util
 
-def _get_file_list(input_path):
+def get_file_list(input_path):
     if os.path.isdir(input_path):
         return util.get_audio_files(input_path)
     elif util.is_audio_file(input_path):
@@ -58,8 +57,7 @@ class Label:
 class Analyzer:
     def __init__(self, input_path, output_path, start_time, end_time, date_str, latitude, longitude, debug_mode, merge):
 
-        self.input_path = input_path.strip()
-        self.output_path = output_path.strip()
+        self.input_path = input_path
         self.start_seconds = self._get_seconds_from_time_string(start_time)
         self.end_seconds = self._get_seconds_from_time_string(end_time)
         self.date_str = date_str
@@ -76,11 +74,13 @@ class Analyzer:
             # convert from end of last segment to start of last segment for processing
             self.end_seconds = max(0, self.end_seconds - cfg.segment_len)
 
-        # if no output path specified and input path is a directory,
-        # put the output labels in the input directory
-        if len(self.output_path) == 0:
+        # if no output path specified, put the output labels in the input directory
+        self.output_path = output_path
+        if self.output_path is None:
             if os.path.isdir(self.input_path):
                 self.output_path = self.input_path
+            else:
+                self.output_path, _ = os.path.split(self.input_path)
         elif not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
 
@@ -366,7 +366,7 @@ class Analyzer:
         print("")
 
     def run(self, file_list):
-        self.model = keras.models.load_model(cfg.ckpt_path, compile=False)
+        self.model = keras.models.load_model(os.path.join('data', cfg.main_ckpt_name), compile=False)
 
         for i, file_path in enumerate(file_list):
             self._analyze_file(file_path)
@@ -387,7 +387,7 @@ if __name__ == '__main__':
     parser.add_argument('--lat', type=float, default=None, help=f'Latitude')
     parser.add_argument('--lon', type=float, default=None, help=f'Longitude')
     parser.add_argument('-m', '--min_freq', type=float, default=cfg.min_location_freq, help=f'Cutoff for location/date filtering')
-    parser.add_argument('-o', '--output', type=str, default='', help='Output directory to contain Audacity label files. Default is input directory.')
+    parser.add_argument('-o', '--output', type=str, default=None, help='Output directory to contain Audacity label files. Default is input directory.')
     parser.add_argument('-p', '--prob', type=float, default=cfg.min_prob, help=f'Minimum confidence level. Default = {cfg.min_prob}.')
     parser.add_argument('-s', '--start', type=str, default='', help='Optional start time in hh:mm:ss format, where hh and mm are optional.')
     args = parser.parse_args()
@@ -405,7 +405,7 @@ if __name__ == '__main__':
     cfg.min_prob = args.prob
     cfg.min_location_freq = args.min_freq
 
-    file_list = _get_file_list(args.input)
+    file_list = get_file_list(args.input)
     start_idx = 0
     while start_idx < len(file_list):
         end_idx = min(start_idx + cfg.analyze_group_size, len(file_list))
