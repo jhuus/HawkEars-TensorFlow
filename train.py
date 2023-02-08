@@ -121,22 +121,16 @@ class Trainer:
 
     # calculate and return class weights
     def get_class_weight(self):
-        num_specs = {}
+        logging.info('Calculate class weights')
         sum = 0
         for class_name in self.classes:
-            count = float(self.db.get_spectrogram_count(class_name))
-            if count == 0:
-                logging.error(f'Error. No spectrograms found for "{class_name}"')
-                quit()
-
-            num_specs[class_name] = count
-            sum += count
+            sum += self.num_specs[class_name]
 
         class_weight = {}
         average = sum / len(self.classes)
         avg_sqrt = math.sqrt(average)
         for i, class_name in enumerate(self.classes):
-            weight = avg_sqrt / math.sqrt(num_specs[class_name])
+            weight = avg_sqrt / math.sqrt(self.num_specs[class_name])
 
             logging.info(f'Applying weight {weight:.2f} to {class_name}')
 
@@ -145,6 +139,7 @@ class Trainer:
         return class_weight
 
     def create_model(self):
+        logging.info('Create model')
         strategy = tf.distribute.get_strategy()
         with strategy.scope():
             if cfg.load_saved_model:
@@ -219,7 +214,10 @@ class Trainer:
         train_index = 0
         test_index = 0
 
+        self.class_counts = []
+        self.num_specs = {}
         for i in range(len(self.classes)):
+            self.num_specs[self.classes[i]] = 0
             results = self.db.get_recording_by_subcat_name(self.classes[i])
             spec_index = 0
             for r in results:
@@ -237,6 +235,7 @@ class Trainer:
                         self.train_class[train_index] = self.classes[i]
                         self.y_train[train_index][i] = 1
                         train_index += 1
+                        self.num_specs[self.classes[i]] += 1
 
                     spec_index += 1
 
@@ -257,7 +256,8 @@ class Trainer:
 
         # initialize callbacks
         lr_scheduler = keras.callbacks.LearningRateScheduler(cos_lr_schedule)
-        self.model_checkpoint_callback = model_checkpoint.ModelCheckpoint(cfg.ckpt_path, cfg.ckpt_min_epochs,
+        ckpt_path = os.path.join('data', cfg.main_ckpt_name)
+        self.model_checkpoint_callback = model_checkpoint.ModelCheckpoint(ckpt_path, cfg.ckpt_min_epochs,
             cfg.ckpt_min_val_accuracy, copy_ckpt=cfg.copy_ckpt, save_best_only=cfg.save_best_only)
         self.callbacks = [lr_scheduler, self.model_checkpoint_callback]
 
@@ -301,7 +301,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', type=int, default=0, help=f'Set to 1 for deterministic but slow training. Default = 0.')
     parser.add_argument('-e', type=int, default=cfg.num_epochs, help=f'Number of epochs. Default = {cfg.num_epochs}.')
     parser.add_argument('-f', type=str, default=cfg.training_db, help=f'Name of training database. Default = {cfg.training_db}.')
-    parser.add_argument('-m', type=int, default=0, help='If 1, load a saved model, else train from scratch. Default = 0.')
+    parser.add_argument('-m', type=str, default=None, help='Specify model name to retrain a saved model, else train from scratch. Default = None.')
     parser.add_argument('-g', type=str, default=cfg.eff_config, help=f'Name of EfficientNet_V2 configuration to use. Default = {cfg.eff_config}.')
     parser.add_argument('-r', type=float, default=cfg.base_lr, help=f'Base learning rate. Default = {cfg.base_lr}.')
     parser.add_argument('-t', type=float, default=cfg.test_portion, help=f'Test portion. Default = {cfg.test_portion}')
@@ -315,11 +315,14 @@ if __name__ == '__main__':
     cfg.num_epochs = args.e
     cfg.training_db = args.f
     cfg.eff_config = args.g
-    cfg.load_saved_model = (args.m == 1)
     cfg.base_lr = args.r
     cfg.test_portion = args.t
     cfg.multi_label = (args.u == 1)
     cfg.verbosity = args.v
+
+    if args.m is not None:
+        cfg.load_saved_model = True
+        cfg.load_ckpt_path = f'data/{args.m}'
 
     if cfg.verbosity > 0:
         logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d %(message)s', datefmt='%H:%M:%S')
