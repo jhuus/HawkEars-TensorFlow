@@ -18,6 +18,8 @@ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentfram
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # 1 = no info, 2 = no warnings, 3 = no errors
+
 from core import audio
 from core import config as cfg
 from core import database
@@ -31,7 +33,7 @@ class Spectrogram:
         self.offset = offset
 
 class Main:
-    def __init__(self, source, category, code, root, dbname, input_path, subcategory, target_dir):
+    def __init__(self, source, category, code, root, dbname, input_path, subcategory, target_dir, target_dir2):
         self.db = database.Database(filename=f'../data/{dbname}.db')
         self.audio = audio.Audio(path_prefix='../')
 
@@ -43,6 +45,7 @@ class Main:
         self.input_path = input_path
         self.subcategory = subcategory
         self.target_dir = target_dir
+        self.target_dir2 = target_dir2
 
     def _get_offsets(self, filename):
         base_name = Path(filename).stem
@@ -80,9 +83,11 @@ class Main:
         else:
             recording_id = results[0].id
 
-        raw_specs = self.audio.get_spectrograms(offsets)
+        spec_exponent = .8 # use a slightly higher value for extracting training data than for analysis, so training data is a bit cleaner
+        raw_specs = self.audio.get_spectrograms(offsets, spec_exponent=spec_exponent)
         for i in range(len(offsets)):
-            specs.append(Spectrogram(raw_specs[i], f'{prefix}-{offsets[i]:.2f}', recording_id, offsets[i]))
+            spec = raw_specs[i]
+            specs.append(Spectrogram(spec, f'{prefix}-{offsets[i]:.2f}', recording_id, offsets[i]))
 
         return specs, raw_specs
 
@@ -164,8 +169,13 @@ class Main:
 
     # after doing everything else, it is sometimes useful to copy the used audio files to a target directory
     def _copy_files(self):
-        if len(self.target_dir) > 0 and len(self.code) > 0:
+        target_dir = None
+        if len(self.target_dir2) > 0:
+            target_dir = self.target_dir2
+        elif len(self.target_dir) > 0 and len(self.code) > 0:
             target_dir = os.path.join(self.target_dir, self.code)
+
+        if target_dir is not None:
             for source_path in util.get_audio_files(self.root):
                 filename = os.path.basename(source_path)
                 base, ext = os.path.splitext(filename)
@@ -209,6 +219,8 @@ class Main:
         self.db.close()
 
 if __name__ == '__main__':
+    data_dir = os.environ.get('DATA_DIR')
+
     # command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('-a', type=str, default=None, help='Source (e.g. "Xeno-Canto").')
@@ -218,13 +230,15 @@ if __name__ == '__main__':
     parser.add_argument('-f', type=str, default='training', help='Database name. Default = training')
     parser.add_argument('-i', type=str, default='', help='Input text file or image directory')
     parser.add_argument('-s', type=str, default='', help='Subcategory (e.g. "Baltimore Oriole").')
-    parser.add_argument('-t', type=str, default='/home/jhuus/data/bird', help='Copy used audio files to a "bird code" directory under this, if specified')
+    parser.add_argument('-t', type=str, default=data_dir, help='Copy used audio files to a "bird code" directory under this, if specified')
+    parser.add_argument('-z', type=str, default='', help='Copy used audio files directly to this directory, if specified')
 
     args = parser.parse_args()
     start_time = time.time()
 
-    cfg.spec_exponent = 1 # don't bring out quiet sounds
-    Main(args.a, args.b, args.c, args.d, args.f, args.i, args.s, args.t).run()
+    # don't use high-pass filter in extract
+    cfg.high_pass_filter = False
+    Main(args.a, args.b, args.c, args.d, args.f, args.i, args.s, args.t, args.z).run()
 
     elapsed = time.time() - start_time
     print(f'elapsed seconds = {elapsed:.3f}')
