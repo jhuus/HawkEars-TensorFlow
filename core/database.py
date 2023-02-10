@@ -85,6 +85,9 @@ class Database:
             query = 'CREATE INDEX IF NOT EXISTS idx_spectrogram_recordingid ON Spectrogram (RecordingID)'
             cursor.execute(query)
 
+            query = 'CREATE INDEX IF NOT EXISTS idx_spectrogram_ignore ON Spectrogram (Ignore)'
+            cursor.execute(query)
+
             self.conn.commit()
         except sqlite3.Error as e:
             print(f'Error in database _create_tables: {e}')
@@ -575,6 +578,42 @@ class Database:
 
         except sqlite3.Error as e:
             print(f'Error in database get_spectrogram_by_subcat_name: {e}')
+
+    # return IDs and embeddings only
+    def get_spectrogram_embeddings(self, subcategory_name, include_ignored=True):
+        try:
+            fields = 'Spectrogram.ID, Embedding'
+
+            if include_ignored:
+                extra_clause = ''
+            else:
+                extra_clause = 'AND Ignore IS NOT "Y"'
+
+            query = f'''
+                SELECT {fields} FROM Spectrogram
+                INNER JOIN Recording ON RecordingID = Recording.ID
+                WHERE RecordingID IN
+                    (SELECT ID FROM Recording WHERE SubcategoryID IN
+                        (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}"))
+                {extra_clause}
+                ORDER BY Recording.FileName, Offset
+            '''
+
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            rows = cursor.fetchall()
+
+            results = []
+            for row in rows:
+                id, embedding = row
+
+                result = SimpleNamespace(id=id, embedding=embedding)
+                results.append(result)
+
+            return results
+
+        except sqlite3.Error as e:
+            print(f'Error in database get_spectrogram_embeddings: {e}')
 
     def get_spectrogram_count(self, subcategory_name, include_ignored=False):
         try:
