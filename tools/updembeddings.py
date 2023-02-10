@@ -89,6 +89,7 @@ if __name__ == '__main__':
     for result in results:
         print(f'Processing {result.name}')
         specs = db.get_spectrogram_by_subcat_name(result.name, include_ignored=True)
+        print(f'Fetched {len(specs)} spectrograms for {result.name}')
         start_idx = 0
 
         while start_idx < len(specs):
