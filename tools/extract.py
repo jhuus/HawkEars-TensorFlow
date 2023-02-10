@@ -219,26 +219,32 @@ class Main:
         self.db.close()
 
 if __name__ == '__main__':
-    data_dir = os.environ.get('DATA_DIR')
+    source_dir_env = os.environ.get('SOURCE_DIR')
+    data_dir_env = os.environ.get('DATA_DIR')
 
     # command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('-a', type=str, default=None, help='Source (e.g. "Xeno-Canto").')
     parser.add_argument('-b', type=str, default='bird', help='Category (e.g. bird).')
     parser.add_argument('-c', type=str, default='', help='Code (e.g. BAOR).')
-    parser.add_argument('-d', type=str, default='', help='Directory containing the audio files.')
+    parser.add_argument('-d', type=str, default=None, help='Directory containing the audio files.')
     parser.add_argument('-f', type=str, default='training', help='Database name. Default = training')
     parser.add_argument('-i', type=str, default='', help='Input text file or image directory')
     parser.add_argument('-s', type=str, default='', help='Subcategory (e.g. "Baltimore Oriole").')
-    parser.add_argument('-t', type=str, default=data_dir, help='Copy used audio files to a "bird code" directory under this, if specified')
+    parser.add_argument('-t', type=str, default=data_dir_env, help='Copy used audio files to a "bird code" directory under this, if specified')
     parser.add_argument('-z', type=str, default='', help='Copy used audio files directly to this directory, if specified')
 
     args = parser.parse_args()
+    if args.d is None:
+        source_dir = os.path.join(source_dir_env, args.c)
+    else:
+        source_dir = args.d
+
     start_time = time.time()
 
     # don't use high-pass filter in extract
     cfg.high_pass_filter = False
-    Main(args.a, args.b, args.c, args.d, args.f, args.i, args.s, args.t, args.z).run()
+    Main(args.a, args.b, args.c, source_dir, args.f, args.i, args.s, args.t, args.z).run()
 
     elapsed = time.time() - start_time
     print(f'elapsed seconds = {elapsed:.3f}')
