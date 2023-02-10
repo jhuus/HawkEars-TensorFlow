@@ -249,7 +249,7 @@ class Audio:
 
     # return list of spectrograms for the given offsets (i.e. starting points in seconds);
     # you have to call load() before calling this
-    def get_spectrograms(self, offsets, seconds=cfg.segment_len, spec_exponent=cfg.spec_exponent, multi_spec=False):
+    def get_spectrograms(self, offsets, segment_len=cfg.segment_len, spec_exponent=cfg.spec_exponent, multi_spec=False):
         if not self.have_signal:
             return None
 
@@ -262,9 +262,8 @@ class Audio:
             spectrogram = None
             spec_width_per_sec = int(cfg.spec_width / cfg.segment_len)
             # create in blocks so we don't run out of GPU memory
-            start = 0
             block_length = cfg.spec_block_seconds * cfg.sampling_rate
-            spec_width_per_sec
+            start = 0
             i = 0
             while start < len(self.signal):
                 i += 1
@@ -282,7 +281,7 @@ class Audio:
             specs = []
             for offset in offsets:
                 if offset <= last_offset:
-                    specs.append(spectrogram[:, int(offset * spec_width_per_sec) : int((offset + cfg.segment_len) * spec_width_per_sec)])
+                    specs.append(spectrogram[:, int(offset * spec_width_per_sec) : int((offset + segment_len) * spec_width_per_sec)])
                 else:
                     spec = spectrogram[:, int(offset * spec_width_per_sec):]
                     spec = np.pad(spec, ((0, 0), (0, cfg.spec_width - spec.shape[1])), 'constant', constant_values=0)
