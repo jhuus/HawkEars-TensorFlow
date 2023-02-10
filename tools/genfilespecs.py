@@ -14,8 +14,11 @@ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentfram
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # 1 = no info, 2 = no warnings, 3 = no errors
+
 from core import audio
 from core import config as cfg
+from core import plot
 from core import util
 
 # command-line arguments
@@ -52,5 +55,5 @@ for file_name in os.listdir(root_dir):
         if width < cfg.spec_width:
             continue
 
-        specs = audio_obj.get_spectrograms([0], seconds=spec_len)
-        util.plot_spec(specs[0], image_path)
+        specs = audio_obj.get_spectrograms([0], segment_len=spec_len)
+        plot.plot_spec(specs[0], image_path)
