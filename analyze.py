@@ -233,6 +233,8 @@ class Analyzer:
         else:
             end_seconds = self.end_seconds
 
+        end_seconds = max(end_seconds, start_seconds)
+
         specs = self._get_specs(start_seconds, end_seconds)
         logging.debug('Done creating spectrograms')
 
