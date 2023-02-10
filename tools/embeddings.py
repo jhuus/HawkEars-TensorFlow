@@ -168,6 +168,7 @@ if __name__ == '__main__':
 
     # do a batch at a time to avoid running out of GPU memory
     file_list = util.get_audio_files(source_dir)
+    print(f'{len(file_list)} audio files found in {source_dir}')
     start_idx = 0
     while start_idx < len(file_list):
         end_idx = min(start_idx + cfg.analyze_group_size, len(file_list))
