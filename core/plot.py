@@ -17,12 +17,13 @@ def plot_spec(spec, path, gray_scale=False):
 
     if gray_scale:
         spec = np.flipud(spec)
-        spec = cv2.resize(spec, dsize=(384, 160), interpolation=cv2.INTER_CUBIC) # make it taller so it's easier to view
         plt.imshow(spec, cmap='gray', vmin=0, vmax=1)
         plt.axis('off')
         plt.savefig(path, bbox_inches='tight', pad_inches = 0)
         plt.close()
     else:
         plt.pcolormesh(spec, shading='gouraud')
+        plt.xticks(np.arange(0, cfg.spec_width, 32.0))
+        plt.yticks(np.arange(0, cfg.spec_height, 16.0))
         plt.savefig(path)
         plt.close()
