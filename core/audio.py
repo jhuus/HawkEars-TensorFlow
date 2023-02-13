@@ -120,22 +120,15 @@ class Audio:
     def _choose_channel(self, left_channel, right_channel, scale):
         left_signal = scale * np.frombuffer(left_channel, '<i2').astype(np.float32)
         right_signal = scale * np.frombuffer(right_channel, '<i2').astype(np.float32)
-        seconds = int(len(left_signal) / cfg.sampling_rate)
-        max_offset = min(seconds - cfg.segment_len, 3 * cfg.segment_len) # look at the first 3 non-overlapping segments
-        offsets = [i for i in range(0, max_offset, cfg.segment_len)]
+        recording_seconds = int(len(left_signal) / cfg.sampling_rate)
+        check_seconds = min(recording_seconds, cfg.check_seconds)
+        offsets = [0]
         self.signal = left_signal
-        left_specs = self.get_spectrograms(offsets, multi_spec=True)
+        left_spec = self.get_spectrograms(offsets, segment_len=check_seconds)[0]
         self.signal = right_signal
-        right_specs = self.get_spectrograms(offsets, multi_spec=True)
-        left_sum = 0
-        for spec in left_specs:
-            left_sum += spec.sum()
+        right_spec = self.get_spectrograms(offsets, segment_len=check_seconds)[0]
 
-        right_sum = 0
-        for spec in right_specs:
-            right_sum += spec.sum()
-
-        if left_sum > right_sum:
+        if left_spec.sum() > right_spec.sum():
             # more noise in the left channel
             return right_signal, right_channel
         else:
@@ -248,8 +241,9 @@ class Audio:
         return spec.reshape((cfg.spec_height, cfg.spec_width, 1))
 
     # return list of spectrograms for the given offsets (i.e. starting points in seconds);
-    # you have to call load() before calling this
-    def get_spectrograms(self, offsets, segment_len=cfg.segment_len, spec_exponent=cfg.spec_exponent, multi_spec=False):
+    # you have to call load() before calling this;
+    # if raw_spectrograms array is specified, populate it with spectrograms before normalization
+    def get_spectrograms(self, offsets, segment_len=cfg.segment_len, spec_exponent=cfg.spec_exponent, multi_spec=False, raw_spectrograms=None):
         if not self.have_signal:
             return None
 
@@ -286,6 +280,10 @@ class Audio:
                     spec = spectrogram[:, int(offset * spec_width_per_sec):]
                     spec = np.pad(spec, ((0, 0), (0, cfg.spec_width - spec.shape[1])), 'constant', constant_values=0)
                     specs.append(spec)
+
+        if raw_spectrograms is not None and len(raw_spectrograms) == len(specs):
+            for i, spec in enumerate(specs):
+                raw_spectrograms[i] = spec
 
         self._normalize(specs)
         if spec_exponent != 1:
