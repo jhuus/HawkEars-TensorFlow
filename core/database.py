@@ -580,7 +580,38 @@ class Database:
             print(f'Error in database get_spectrogram_by_subcat_name: {e}')
 
     # return IDs and embeddings only
-    def get_spectrogram_embeddings(self, subcategory_name, include_ignored=True):
+    def get_spectrogram_embeddings(self, include_ignored=True):
+        try:
+            fields = 'ID, Embedding'
+
+            if include_ignored:
+                extra_clause = ''
+            else:
+                extra_clause = 'WHERE Ignore IS NOT "Y"'
+
+            query = f'''
+                SELECT {fields} FROM Spectrogram
+                {extra_clause}
+            '''
+
+            cursor = self.conn.cursor()
+            cursor.execute(query)
+            rows = cursor.fetchall()
+
+            results = []
+            for row in rows:
+                id, embedding = row
+
+                result = SimpleNamespace(id=id, embedding=embedding)
+                results.append(result)
+
+            return results
+
+        except sqlite3.Error as e:
+            print(f'Error in database get_spectrogram_embeddings: {e}')
+
+    # return IDs and embeddings only
+    def get_spectrogram_embeddings_by_subcat_name(self, subcategory_name, include_ignored=True):
         try:
             fields = 'Spectrogram.ID, Embedding'
 
@@ -613,7 +644,7 @@ class Database:
             return results
 
         except sqlite3.Error as e:
-            print(f'Error in database get_spectrogram_embeddings: {e}')
+            print(f'Error in database get_spectrogram_embeddings_by_subcat_name: {e}')
 
     def get_spectrogram_count(self, subcategory_name, include_ignored=False):
         try:
