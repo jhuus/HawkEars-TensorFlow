@@ -18,6 +18,8 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 
+import species_handlers
+from label import Label
 from core import audio
 from core import config as cfg
 from core import frequency_db
@@ -46,13 +48,6 @@ class ClassInfo:
         self.has_label = False
         self.probs = [] # predictions (one per segment)
         self.frequency_too_low = False
-
-class Label:
-    def __init__(self, class_name, probability, start_time, end_time):
-        self.class_name = class_name
-        self.probability = probability
-        self.start_time = start_time
-        self.end_time = end_time
 
 class Analyzer:
     def __init__(self, input_path, output_path, start_time, end_time, date_str, latitude, longitude, debug_mode, merge):
@@ -235,14 +230,14 @@ class Analyzer:
 
         end_seconds = max(end_seconds, start_seconds)
 
-        specs = self._get_specs(start_seconds, end_seconds)
+        self.specs = self._get_specs(start_seconds, end_seconds)
         logging.debug('Done creating spectrograms')
 
-        if len(specs) == 0:
+        if len(self.specs) == 0:
             logging.info('No spectrograms found')
             return
 
-        predictions = self.model.predict(specs, verbose=0)
+        predictions = self.model.predict(self.specs, verbose=0)
 
         if self.debug_mode:
             self._log_predictions(predictions)
@@ -257,7 +252,8 @@ class Analyzer:
     # get the list of spectrograms
     def _get_specs(self, start_seconds, end_seconds):
         self.offsets = np.arange(start_seconds, end_seconds + 1.0, 1.0).tolist()
-        specs = self.audio.get_spectrograms(self.offsets)
+        self.raw_spectrograms = [0 for i in range(len(self.offsets))]
+        specs = self.audio.get_spectrograms(self.offsets, raw_spectrograms=self.raw_spectrograms)
         spec_array = np.zeros((len(specs), cfg.spec_height, cfg.spec_width, 1))
         for i in range(len(specs)):
             spec_array[i] = specs[i].reshape((cfg.spec_height, cfg.spec_width, 1)).astype(np.float32)
@@ -297,9 +293,9 @@ class Analyzer:
         self._get_predictions(signal, rate)
 
         # generate labels for one class at a time
-        labels = []
         min_adj_prob = cfg.min_prob * cfg.adjacent_prob_factor # in mode 0, adjacent segments need this prob at least
-
+        labels = []
+        self.species_handlers = species_handlers.Species_Handlers(min_adj_prob, self.class_infos, self.offsets, self.merge_labels, labels, self.raw_spectrograms)
         for class_info in self.class_infos:
             if class_info.ignore or class_info.frequency_too_low or not class_info.has_label:
                 continue
@@ -309,36 +305,35 @@ class Analyzer:
             else:
                 name = class_info.name
 
-            prev_label = None
-            probs = class_info.probs
-            for i in range(len(probs)):
-
-                # create a label if probability exceeds the threshold
-                if probs[i] >= cfg.min_prob:
-                    use_prob = probs[i]
-                else:
-                    continue
-
-                end_time = self.offsets[i]+cfg.segment_len
-                if cfg.check_adjacent:
-                    if i not in [0, len(probs) - 1]:
-                        if probs[i - 1] < min_adj_prob and probs[i + 1] < min_adj_prob:
-                            continue
-
-                    if self.merge_labels and prev_label != None and prev_label.end_time >= self.offsets[i]:
-                        # extend the previous label's end time (i.e. merge)
-                        prev_label.end_time = end_time
-                        prev_label.probability = max(use_prob, prev_label.probability)
-                    else:
-                        label = Label(name, use_prob, self.offsets[i], end_time)
-                        labels.append(label)
-                        prev_label = label
-                else:
-                    label = Label(name, use_prob, self.offsets[i], end_time)
-                    labels.append(label)
-                    prev_label = label
+            self._process_species(name, class_info, min_adj_prob, labels)
 
         self._save_labels(labels, file_path)
+
+    def _process_species(self, name, class_info, min_adj_prob, labels):
+        # call species-specific logic if it exists
+        if class_info.code in self.species_handlers.handlers:
+            return self.species_handlers.handlers[class_info.code](name, class_info)
+
+        prev_label = None
+        for i, prob in enumerate(class_info.probs):
+            # skip if probability < threshold
+            if prob < cfg.min_prob:
+                continue
+
+            end_time = self.offsets[i] + cfg.segment_len
+            if cfg.check_adjacent and i not in [0, len(class_info.probs) - 1]:
+                # skip if adjacent label probabilities are too low
+                if class_info.probs[i - 1] < min_adj_prob and class_info.probs[i + 1] < min_adj_prob:
+                    continue
+
+            if self.merge_labels and prev_label != None and prev_label.end_time >= self.offsets[i]:
+                # extend the previous label's end time (i.e. merge)
+                prev_label.end_time = end_time
+                prev_label.probability = max(prob, prev_label.probability)
+            else:
+                label = Label(name, prob, self.offsets[i], end_time)
+                labels.append(label)
+                prev_label = label
 
     def _save_labels(self, labels, file_path):
         basename = os.path.basename(file_path)
