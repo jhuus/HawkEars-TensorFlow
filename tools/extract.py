@@ -158,6 +158,10 @@ class Main:
                 continue
 
     def _process_spec_name(self, name):
+        if '-' not in name:
+            print(f'Skipping {name} (bad name)')
+            return
+
         pos = name.rindex('-')
         filename = name[:pos]
         offset = float(name[pos+1:])
