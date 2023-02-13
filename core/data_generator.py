@@ -13,7 +13,7 @@ from core import config as cfg
 from core import util
 from core import plot
 
-CACHE_LEN = 1000   # cache this many white noise spectrograms for performance
+CACHE_LEN = 1000   # cache this many white noise spectrograms
 
 class DataGenerator():
     def __init__(self, db, x_train, y_train, train_class):
@@ -27,11 +27,18 @@ class DataGenerator():
             # create some white noise
             self.white_noise = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
             for i in range(CACHE_LEN):
-                self.white_noise[i] = self._get_white_noise(cfg.white_noise_variance)
+                variance = random.uniform(cfg.min_white_noise_variance, cfg.max_white_noise_variance)
+                self.white_noise[i] = self._get_white_noise(variance)
 
             self.speckle = np.zeros((CACHE_LEN, cfg.spec_height, cfg.spec_width, 1))
             for i in range(CACHE_LEN):
                 self.speckle[i] = self._get_white_noise(cfg.speckle_variance)
+
+            # get some noise spectrograms from the database
+            results = db.get_spectrogram_by_subcat_name('Noise')
+            self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
+            for i, r in enumerate(results):
+                self.real_noise[i] = util.expand_spectrogram(r.value) * cfg.real_noise_factor
 
     # this is called once per epoch to generate the spectrograms
     def __call__(self):
@@ -54,6 +61,8 @@ class DataGenerator():
                     prob = random.uniform(0, 1)
                     if prob < cfg.prob_speckle:
                         spec = self._speckle(spec)
+                    elif prob < cfg.prob_real_noise:
+                        spec = self._add_real_noise(spec)
                     else:
                         spec = self._add_white_noise(spec)
 
@@ -68,6 +77,12 @@ class DataGenerator():
     def _add_white_noise(self, spec):
         index = random.randint(0, len(self.white_noise) - 1)
         spec += self.white_noise[index]
+        return spec
+
+    # add real noise to the spectrogram
+    def _add_real_noise(self, spec):
+        index = random.randint(0, len(self.real_noise) - 1)
+        spec += self.real_noise[index]
         return spec
 
     # return a white noise spectrogram with the given variance
