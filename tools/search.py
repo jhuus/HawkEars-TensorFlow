@@ -38,7 +38,8 @@ parser.add_argument('-m', type=float, default=0.6, help='Stop plotting when dist
 parser.add_argument('-n', type=int, default=60, help='Number of top matches to plot.')
 parser.add_argument('-o', type=str, default='output', help='Output directory for plotting matches.')
 parser.add_argument('-i', type=str, default='', help='Path to file containing spectrogram to search for.')
-parser.add_argument('-s', type=str, default='', help='Species name.')
+parser.add_argument('-s', type=str, default=None, help='Species name to search for.')
+parser.add_argument('-s2', type=str, default=None, help='Species name to use in target DB if -x is specified. If this is omitted, default to -s option.')
 parser.add_argument('-t', type=float, default=0, help='Offset of spectrogram to search for.')
 parser.add_argument('-x', type=str, default=None, help='If specified (e.g. "training"), skip spectrograms that exist in this database. Default = None.')
 
@@ -50,6 +51,7 @@ db_name = args.f
 target_path = args.i
 target_offset = args.t
 species_name = args.s
+skip_species_name = args.s2
 gray_scale = (args.g == 1)
 max_dist = args.m
 num_to_plot = args.n
@@ -92,12 +94,19 @@ else:
 
 # get recordings and create dict from ID to filename
 recording_dict = {}
-results = db.get_recording_by_subcat_name(species_name)
+if species_name is None:
+    results = db.get_recording()
+else:
+    results = db.get_recording_by_subcat_name(species_name)
+
 for r in results:
     recording_dict[r.id] = r.filename
 
 # get embeddings only, since getting spectrograms here might use too much memory
-results = db.get_spectrogram_embeddings(species_name)
+if species_name is None:
+    results = db.get_spectrogram_embeddings()
+else:
+    results = db.get_spectrogram_embeddings_by_subcat_name(species_name)
 
 print(f'retrieved {len(results)} spectrograms to search')
 
@@ -113,7 +122,8 @@ for i, r in enumerate(results):
 check_spec_names = {}
 if check_db_name is not None:
     check_db = database.Database(f'../data/{check_db_name}.db')
-    results = check_db.get_spectrogram_by_subcat_name(species_name, include_embedding=True)
+    use_name = skip_species_name if skip_species_name is not None else species_name
+    results = check_db.get_spectrogram_by_subcat_name(use_name, include_embedding=True)
     for r in results:
         spec_name = f'{r.filename}-{r.offset:.2f}'
         check_spec_names[spec_name] = 1
