@@ -230,6 +230,14 @@ BLOCK_CONFIGS = {
         "strides": [1, 2, 2, 2, 1, 2],
         "se_ratios": [0, 0, 0, 0, 0, 0]
     },
+    "a4.2": {  # custom 6-layer (~7.2M trainable parameters)
+        "first_conv_filter": 32,
+        "expands": [1, 4, 4, 4, 4, 6],
+        "out_channels": [16, 32, 48, 64, 96, 112],
+        "depths": [1, 2, 3, 3, 5, 6],
+        "strides": [1, 2, 2, 2, 1, 2],
+        "se_ratios": [0, 0, 0, 0, 0, 0]
+    },
     "a5": {  # custom 6-layer (~7.7M trainable parameters)
         "first_conv_filter": 32,
         "expands": [1, 4, 4, 4, 4, 6],
