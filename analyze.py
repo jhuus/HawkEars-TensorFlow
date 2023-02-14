@@ -19,7 +19,6 @@ import tensorflow as tf
 from tensorflow import keras
 
 import species_handlers
-from label import Label
 from core import audio
 from core import config as cfg
 from core import frequency_db
@@ -35,19 +34,26 @@ def get_file_list(input_path):
         logging.error(f'Error: {input_path} is not a directory or an audio file.')
         sys.exit()
 
+class Label:
+    def __init__(self, class_name, probability, start_time, end_time):
+        self.class_name = class_name
+        self.probability = probability
+        self.start_time = start_time
+        self.end_time = end_time
+
 class ClassInfo:
     def __init__(self, name, code, ignore):
         self.name = name
         self.code = code
         self.ignore = ignore
-        self.frequency_too_low = False
+        self.ebird_frequency_too_low = False
         self.max_frequency = 0
         self.reset()
 
     def reset(self):
         self.has_label = False
         self.probs = [] # predictions (one per segment)
-        self.frequency_too_low = False
+        self.ebird_frequency_too_low = False
 
 class Analyzer:
     def __init__(self, input_path, output_path, start_time, end_time, date_str, latitude, longitude, debug_mode, merge):
@@ -281,9 +287,9 @@ class Analyzer:
             if check_frequency and not class_info.ignore:
                 if self.week_num is None and not self.get_date_from_file_name:
                     if class_info.max_frequency < cfg.min_location_freq:
-                        class_info.frequency_too_low = True
+                        class_info.ebird_frequency_too_low = True
                 elif not self.week_num in class_info.frequency_dict or class_info.frequency_dict[self.week_num] < cfg.min_location_freq:
-                    class_info.frequency_too_low = True
+                    class_info.ebird_frequency_too_low = True
 
         signal, rate = self.audio.load(file_path)
 
@@ -292,12 +298,20 @@ class Analyzer:
 
         self._get_predictions(signal, rate)
 
+        # do pre-processing for individual species
+        sh = species_handlers.Species_Handlers(self.class_infos, self.offsets, self.raw_spectrograms)
+        for class_info in self.class_infos:
+            if class_info.ignore or class_info.ebird_frequency_too_low or not class_info.has_label:
+                continue
+
+            if class_info.code in sh.handlers:
+                sh.handlers[class_info.code](class_info)
+
         # generate labels for one class at a time
         min_adj_prob = cfg.min_prob * cfg.adjacent_prob_factor # in mode 0, adjacent segments need this prob at least
         labels = []
-        self.species_handlers = species_handlers.Species_Handlers(min_adj_prob, self.class_infos, self.offsets, self.merge_labels, labels, self.raw_spectrograms)
         for class_info in self.class_infos:
-            if class_info.ignore or class_info.frequency_too_low or not class_info.has_label:
+            if class_info.ignore or class_info.ebird_frequency_too_low or not class_info.has_label:
                 continue
 
             if cfg.use_banding_codes:
@@ -310,10 +324,6 @@ class Analyzer:
         self._save_labels(labels, file_path)
 
     def _process_species(self, name, class_info, min_adj_prob, labels):
-        # call species-specific logic if it exists
-        if class_info.code in self.species_handlers.handlers:
-            return self.species_handlers.handlers[class_info.code](name, class_info)
-
         prev_label = None
         for i, prob in enumerate(class_info.probs):
             # skip if probability < threshold
