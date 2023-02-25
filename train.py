@@ -206,9 +206,6 @@ class Trainer:
         self.y_test = np.zeros((test_total, len(self.classes)))
         self.input_shape = (cfg.spec_height, cfg.spec_width, 1)
 
-        # map test spectrogram indexes to file names for outputting names of misidentified ones
-        self.spec_file_name = {}
-
         # populate from the database;
         # they will be selected randomly per mini batch, so no need to randomize here
         train_index = 0
@@ -225,7 +222,6 @@ class Trainer:
                 for r2 in results2:
                     if spec_index in self.test_indices[i]:
                         # test spectrograms are expanded here
-                        self.spec_file_name[test_index] = f'{r.filename}-{r2.offset}' # will be used in names of files written to misident folder
                         self.x_test[test_index] = util.expand_spectrogram(r2.value)
                         self.y_test[test_index][i] = 1
                         test_index += 1
@@ -252,7 +248,7 @@ class Trainer:
                 self.model.summary(print_fn=lambda x: text_output.write(x + '\n'))
 
             if cfg.verbosity >= 2:
-                keras.utils.plot_model(self.model, show_shapes=True, to_file=f'{self.out_dir}/graphic.png')
+                keras.utils.plot_model(self.model, show_shapes=True, to_file=f'{self.out_dir}/model.png')
 
         # initialize callbacks
         lr_scheduler = keras.callbacks.LearningRateScheduler(cos_lr_schedule)
