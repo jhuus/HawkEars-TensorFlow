@@ -50,13 +50,16 @@ def compress_spectrogram(data):
     return compressed
 
 # decompress a spectrogram, then convert from bytes to floats and reshape it
-def expand_spectrogram(spec, reshape=True):
+def expand_spectrogram(spec, reshape=True, low_band=False):
     bytes = zlib.decompress(spec)
     spec = np.frombuffer(bytes, dtype=np.uint8) / 255
     spec = spec.astype(np.float32)
 
     if reshape:
-        spec = spec.reshape(cfg.spec_height, cfg.spec_width, 1)
+        if low_band:
+            spec = spec.reshape(cfg.low_band_spec_height, cfg.spec_width, 1)
+        else:
+            spec = spec.reshape(cfg.spec_height, cfg.spec_width, 1)
 
     return spec
 
