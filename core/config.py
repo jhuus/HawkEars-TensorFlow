@@ -13,6 +13,13 @@ mel_amplitude_adjustment = True # correct for amplitude distortion caused by mel
 spec_exponent = .68      # raise spectrogram values to this exponent (brings out faint sounds)
 spec_block_seconds = 240 # max seconds of spectrogram to create at a time (limited by GPU memory)
 
+# low-frequency audio settings for Ruffed Grouse drumming identifier
+low_band_spec_height = 64
+low_band_min_audio_freq = 0
+low_band_max_audio_freq = 200
+low_band_mel_scale = False
+low_band_ckpt_name = 'ckpt_low_band'
+
 # training
 load_saved_model = False
 mixed_precision = True  # mixed precision trains faster with large models, but slower with tiny models
