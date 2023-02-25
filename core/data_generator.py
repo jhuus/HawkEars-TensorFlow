@@ -34,11 +34,12 @@ class DataGenerator():
             for i in range(CACHE_LEN):
                 self.speckle[i] = self._get_white_noise(cfg.speckle_variance)
 
-            # get some noise spectrograms from the database
-            results = db.get_spectrogram_by_subcat_name('Noise')
-            self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
-            for i, r in enumerate(results):
-                self.real_noise[i] = util.expand_spectrogram(r.value) * cfg.real_noise_factor
+            if cfg.prob_real_noise > 0:
+                # get some noise spectrograms from the database
+                results = db.get_spectrogram_by_subcat_name('Noise')
+                self.real_noise = np.zeros((len(results), cfg.spec_height, cfg.spec_width, 1))
+                for i, r in enumerate(results):
+                    self.real_noise[i] = util.expand_spectrogram(r.value) * cfg.real_noise_factor
 
     # this is called once per epoch to generate the spectrograms
     def __call__(self):
