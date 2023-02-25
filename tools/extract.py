@@ -33,7 +33,7 @@ class Spectrogram:
         self.offset = offset
 
 class Main:
-    def __init__(self, source, category, code, root, dbname, input_path, subcategory, target_dir, target_dir2):
+    def __init__(self, source, category, code, root, dbname, input_path, subcategory, target_dir, target_dir2, use_low_band):
         self.db = database.Database(filename=f'../data/{dbname}.db')
         self.audio = audio.Audio(path_prefix='../')
 
@@ -46,6 +46,7 @@ class Main:
         self.subcategory = subcategory
         self.target_dir = target_dir
         self.target_dir2 = target_dir2
+        self.use_low_band = use_low_band
 
     def _get_offsets(self, filename):
         base_name = Path(filename).stem
@@ -84,7 +85,7 @@ class Main:
             recording_id = results[0].id
 
         spec_exponent = .8 # use a slightly higher value for extracting training data than for analysis, so training data is a bit cleaner
-        raw_specs = self.audio.get_spectrograms(offsets, spec_exponent=spec_exponent)
+        raw_specs = self.audio.get_spectrograms(offsets, spec_exponent=spec_exponent, low_band=self.use_low_band)
         for i in range(len(offsets)):
             spec = raw_specs[i]
             specs.append(Spectrogram(spec, f'{prefix}-{offsets[i]:.2f}', recording_id, offsets[i]))
@@ -234,6 +235,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', type=str, default=None, help='Directory containing the audio files.')
     parser.add_argument('-f', type=str, default='training', help='Database name. Default = training')
     parser.add_argument('-i', type=str, default='', help='Input text file or image directory')
+    parser.add_argument('-l', type=int, default=0, help='If 1, use low_band audio settings (for Ruffed Grouse drumming identifier)')
     parser.add_argument('-s', type=str, default='', help='Subcategory (e.g. "Baltimore Oriole").')
     parser.add_argument('-t', type=str, default=data_dir_env, help='Copy used audio files to a "bird code" directory under this, if specified')
     parser.add_argument('-z', type=str, default='', help='Copy used audio files directly to this directory, if specified')
@@ -248,7 +250,7 @@ if __name__ == '__main__':
 
     # don't use high-pass filter in extract
     cfg.high_pass_filter = False
-    Main(args.a, args.b, args.c, source_dir, args.f, args.i, args.s, args.t, args.z).run()
+    Main(args.a, args.b, args.c, source_dir, args.f, args.i, args.s, args.t, args.z, (args.l == 1)).run()
 
     elapsed = time.time() - start_time
     print(f'elapsed seconds = {elapsed:.3f}')
