@@ -47,7 +47,6 @@ class Main:
         self.min_samples = min_samples
         self.center_search_num = center_search_num
         self.gray_scale = gray_scale
-        self.denoiser = None
 
     # create clusters of the embeddings;
     # output is a dictionary with a key per cluster and a list of offsets per key
@@ -125,28 +124,14 @@ class Main:
         else:
             num_to_plot = min(self.num_to_plot, len(clusters[cluster_num]))
 
-        # create denoised versions, so simple noise is ignored in sorting
-        if self.denoiser is None:
-            self.denoiser = keras.models.load_model("../data/denoiser", compile=False)
-
         specs = np.zeros((num_to_plot, cfg.spec_height, cfg.spec_width, 1))
         for i in range(num_to_plot):
             offset = clusters[cluster_num][i]
             specs[i] = self.specs[offset].reshape((cfg.spec_height, cfg.spec_width, 1))
 
-        denoised_specs = self.denoiser.predict(specs, verbose=0)
-
-        # for each denoised spec, normalize it then count the number of pixels > .02
+        # for each spec, count the number of pixels > .02
         counts = []
-        for i, spec in enumerate(denoised_specs):
-            # normalize the values to [0, 1], since denoising tends to yield about [0, .6]
-            max = spec.max()
-            if max > 0:
-                spec = spec / max
-
-            spec = spec.clip(0, 1) # probably not needed, but just to be safe
-
-            # count pixels > .02
+        for i, spec in enumerate(specs):
             count = (spec > .02).sum()
             counts.append((i, count))
 
