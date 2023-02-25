@@ -9,9 +9,11 @@ import numpy as np
 from core import config as cfg
 
 # save a plot of a spectrogram
-def plot_spec(spec, path, gray_scale=False):
+def plot_spec(spec, path, gray_scale=False, low_band=False):
+    spec_height = cfg.low_band_spec_height if low_band else cfg.spec_height
+
     if spec.ndim == 3:
-        spec = spec.reshape((cfg.spec_height, cfg.spec_width))
+        spec = spec.reshape((spec_height, cfg.spec_width))
 
     plt.clf() # clear any existing plot data
 
@@ -24,6 +26,6 @@ def plot_spec(spec, path, gray_scale=False):
     else:
         plt.pcolormesh(spec, shading='gouraud')
         plt.xticks(np.arange(0, cfg.spec_width, 32.0))
-        plt.yticks(np.arange(0, cfg.spec_height, 16.0))
+        plt.yticks(np.arange(0, spec_height, 16.0))
         plt.savefig(path)
         plt.close()
