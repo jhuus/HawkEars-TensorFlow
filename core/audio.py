@@ -55,40 +55,50 @@ class Audio:
         self.path_prefix = path_prefix
 
     # width of spectrogram is determined by input signal length, and height = cfg.spec_height
-    def _get_raw_spectrogram(self, signal):
+    def _get_raw_spectrogram(self, signal, low_band=False):
         s = tf.signal.stft(signals=signal, frame_length=cfg.win_length, frame_step=cfg.hop_length, fft_length=2*cfg.win_length, pad_end=True)
 
         spec = tf.cast(tf.abs(s), tf.float32)
 
+        if low_band:
+            min_freq = cfg.low_band_min_audio_freq
+            max_freq = cfg.low_band_max_audio_freq
+            spec_height = cfg.low_band_spec_height
+            mel_scale = cfg.low_band_mel_scale
+        else:
+            min_freq = cfg.min_audio_freq
+            max_freq = cfg.max_audio_freq
+            spec_height = cfg.spec_height
+            mel_scale = cfg.mel_scale
+
         # clip frequencies above max_audio_freq
         num_freqs = spec.shape[1]
-        clip_idx = int(2 * spec.shape[1] * cfg.max_audio_freq / cfg.sampling_rate)
+        clip_idx = int(2 * spec.shape[1] * max_freq / cfg.sampling_rate)
         spec = spec[:, :clip_idx]
 
-        if cfg.mel_scale:
+        if mel_scale:
             # mel spectrogram
             num_spectrogram_bins = int(spec.shape[-1])
             linear_to_mel_matrix = tf.signal.linear_to_mel_weight_matrix(
-                cfg.spec_height, num_spectrogram_bins, cfg.sampling_rate, cfg.min_audio_freq, cfg.sampling_rate // 2)
+                spec_height, num_spectrogram_bins, cfg.sampling_rate, min_freq, cfg.sampling_rate // 2)
             mel = tf.tensordot(spec, linear_to_mel_matrix, 1)
             mel.set_shape(spec.shape[:-1].concatenate(linear_to_mel_matrix.shape[-1:]))
             spec = np.transpose(mel)
             if cfg.mel_amplitude_adjustment:
-                if cfg.spec_height == 128:
+                if spec_height == 128:
                     spec = (spec.T / adjust_mel_amplitude_128).T
                 else:
-                    # assume spec_height = 256
                     spec = (spec.T / adjust_mel_amplitude_256).T
         else:
             # linear frequency scale (used sometimes for plotting spectrograms)
-            spec = cv2.resize(spec.numpy(), dsize=(cfg.spec_height, spec.shape[0]), interpolation=cv2.INTER_AREA)
+            spec = cv2.resize(spec.numpy(), dsize=(spec_height, spec.shape[0]), interpolation=cv2.INTER_AREA)
             spec = np.transpose(spec)
 
         return spec
 
     # version of get_spectrograms that calls _get_raw_spectrogram separately per offset,
     # which is faster when just getting a few spectrograms from a large recording
-    def _get_spectrograms_multi_spec(self, signal, offsets):
+    def _get_spectrograms_multi_spec(self, signal, offsets, low_band=False):
         last_offset = (len(signal) / cfg.sampling_rate) - cfg.segment_len
         specs = []
         for offset in offsets:
@@ -100,7 +110,7 @@ class Audio:
                 pad_amount = cfg.segment_len * cfg.sampling_rate - segment.shape[0]
                 segment = np.pad(segment, ((0, pad_amount)), 'constant', constant_values=0)
 
-            spec = self._get_raw_spectrogram(segment)
+            spec = self._get_raw_spectrogram(segment, low_band=low_band)
             specs.append(spec)
 
 
@@ -135,94 +145,6 @@ class Audio:
             # more noise in the right channel
             return left_signal, left_channel
 
-    # look for a sound in the given frequency (height) range, in the first segment of the spec;
-    # if found, return the starting offset in seconds
-    def _find_sound(self, spec, sound_factor, min_height, max_height):
-        # get sum of magnitude per sample in the given frequency range
-        spec = spec.transpose()
-        sum = np.zeros(spec.shape[0])
-        for sample_offset in range(spec.shape[0]):
-            sum[sample_offset] = np.sum(spec[sample_offset][min_height:max_height])
-
-        # find samples more than sound_factor times as loud as median
-        first_sound_sample = 0
-        found = False
-        median = np.median(sum)
-        sound = np.zeros(spec.shape[0])
-        for sample_offset in range(spec.shape[0]):
-            if sum[sample_offset] > sound_factor * median:
-                sound[sample_offset] = 1
-                if not found:
-                    first_sound_sample = sample_offset
-                    found = True
-
-        if found and first_sound_sample < cfg.spec_width:
-            # we found sound in the first segment, so try to center it;
-            # scan backwards from end of potential segment until non-silence
-            curr_offset = first_sound_sample
-            end_offset = min(curr_offset + cfg.spec_width - 1, spec.shape[0] - 1)
-
-            while sound[end_offset] == 0:
-                end_offset -= 1
-
-            # determine padding and back up from curr_offset to center the sound
-            sound_len = end_offset - curr_offset + 1
-            total_pad_len = cfg.spec_width - sound_len
-            initial_pad_len = min(int(total_pad_len / 2), curr_offset)
-            start_offset = curr_offset - initial_pad_len
-            return True, start_offset
-
-        else:
-            return False, 0
-
-    # find sounds in audio, using a simple heuristic approach;
-    # return array of floats representing offsets in seconds where significant sounds begin;
-    # when analyzing an audio file, the only goal is to minimize splitting of bird sounds,
-    # since sound fragments are often misidentified;
-    # when extracting data for training we also want to discard intervals that don't seem
-    # to have significant sounds in them, but in analysis it's better to let the neural net
-    # decide if a spectrogram contains a bird sound or not
-    def find_sounds(self, signal=None, sound_factor=1.15, keep_empty=True):
-        if signal is None:
-            if self.have_signal:
-                signal = self.signal
-            else:
-                return []
-
-        num_seconds = signal.shape[0] / cfg.sampling_rate
-        samples_per_sec = cfg.spec_width / cfg.segment_len
-        freq_cutoff = int(cfg.spec_height / 4) # dividing line between "low" and "high" frequencies
-
-        # process in chunks, where each is as wide as two spectrograms
-        curr_start = 0
-        offsets = []
-        while curr_start <= num_seconds - cfg.segment_len:
-            curr_end = min(curr_start + 2 * cfg.segment_len, num_seconds)
-            segment = signal[int(curr_start * cfg.sampling_rate):int(curr_end * cfg.sampling_rate)]
-            spec = self._get_raw_spectrogram(segment)
-
-            # look for a sound in top 3/4 of frequency range
-            found, sound_start = self._find_sound(spec, sound_factor, freq_cutoff, cfg.spec_height)
-            sound_start /= samples_per_sec # convert from samples to seconds
-
-            if found:
-                offsets.append(curr_start + sound_start)
-                curr_start += sound_start + cfg.segment_len
-            elif keep_empty:
-                offsets.append(curr_start)
-                curr_start += cfg.segment_len
-            else:
-                # look for a sound in bottom 1/4 of frequency range
-                found, sound_start = self._find_sound(spec, sound_factor, 0, freq_cutoff)
-                sound_start /= samples_per_sec # convert from samples to seconds
-                if found:
-                    offsets.append(curr_start + sound_start)
-                    curr_start += sound_start + cfg.segment_len
-                else:
-                    curr_start += cfg.segment_len
-
-        return offsets
-
     # return a white noise spectrogram with values in range [0, 1]
     def white_noise(self, mean=0, stdev=1):
         samples = cfg.segment_len * cfg.sampling_rate
@@ -243,7 +165,7 @@ class Audio:
     # return list of spectrograms for the given offsets (i.e. starting points in seconds);
     # you have to call load() before calling this;
     # if raw_spectrograms array is specified, populate it with spectrograms before normalization
-    def get_spectrograms(self, offsets, segment_len=cfg.segment_len, spec_exponent=cfg.spec_exponent, multi_spec=False, raw_spectrograms=None):
+    def get_spectrograms(self, offsets, segment_len=cfg.segment_len, spec_exponent=cfg.spec_exponent, low_band=False, multi_spec=False, raw_spectrograms=None):
         if not self.have_signal:
             return None
 
@@ -262,7 +184,7 @@ class Audio:
             while start < len(self.signal):
                 i += 1
                 length = min(block_length, len(self.signal) - start)
-                block = self._get_raw_spectrogram(self.signal[start:start+length])
+                block = self._get_raw_spectrogram(self.signal[start:start+length], low_band=low_band)
                 if spectrogram is None:
                     spectrogram = block
                 else:
