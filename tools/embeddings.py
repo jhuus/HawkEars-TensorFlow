@@ -29,10 +29,9 @@ from core import util
 from core import plot
 
 class Main:
-    def __init__(self, ckpt_path, source_dir, data_dir, check_peaks):
+    def __init__(self, ckpt_path, source_dir, data_dir):
         self.source_dir = source_dir
         self.data_dir = data_dir
-        self.check_peaks = check_peaks
         self.ckpt_path = ckpt_path
 
     def run(self, file_list):
@@ -85,11 +84,8 @@ class Main:
                 continue
 
             seconds = int(len(signal) / rate)
-            if self.check_peaks:
-                offsets = audio_obj.find_sounds()
-            else:
-                end_seconds = max(1, (len(signal) / rate) - cfg.segment_len)
-                offsets = np.arange(0, end_seconds, 1.5).tolist()
+            end_seconds = max(1, (len(signal) / rate) - cfg.segment_len)
+            offsets = np.arange(0, end_seconds, 1.5).tolist()
 
             specs = audio_obj.get_spectrograms(offsets)
 
@@ -137,14 +133,12 @@ if __name__ == '__main__':
     parser.add_argument('-r2', type=str, default=data_dir_env, help='Root directory to write database under.')
     parser.add_argument('-s', type=str, default='', help='Species name.')
     parser.add_argument('-c', type=str, default='', help='Species code.')
-    parser.add_argument('-p', type=int, default=0, help='0 means extract at 1.5 second offsets, 1 means extract at peaks. Default = 0.')
 
     args = parser.parse_args()
 
     ckpt_path = f'../data/{cfg.search_ckpt_name}'
     species_name = args.s
     code = args.c
-    check_peaks = args.p == 1
 
     if len(species_name) == 0:
         print('Error: species name must be specified')
@@ -174,7 +168,7 @@ if __name__ == '__main__':
         end_idx = min(start_idx + cfg.analyze_group_size, len(file_list))
 
         print(f'Processing files {start_idx} to {end_idx - 1}')
-        main = Main(ckpt_path, source_dir, data_dir, check_peaks)
+        main = Main(ckpt_path, source_dir, data_dir)
         p = Process(target=main.run, args=((file_list[start_idx:end_idx],)))
         p.start()
         p.join()
