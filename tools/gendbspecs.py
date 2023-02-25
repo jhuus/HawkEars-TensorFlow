@@ -23,6 +23,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-f', type=str, default=f'../data/{cfg.training_db}.db', help='Database path.')
 parser.add_argument('-c', type=int, default=0, help='1 = center the images.')
 parser.add_argument('-g', type=int, default=0, help='1 = use gray scale.')
+parser.add_argument('-l', type=int, default=0, help='1 = low frequency band (used by Ruffed Grouse drumming detector).')
 parser.add_argument('-m', type=int, default=0, help='Mode 0 = exclude ignored specs, 1 = include ignored, 2 = only ignored. Default = 0.')
 parser.add_argument('-n', type=int, default=0, help='If > 0, stop after this many images. Default = 0.')
 parser.add_argument('-s', type=str, default='', help='Species name.')
@@ -38,6 +39,7 @@ prefix = args.p.lower()
 mode = args.m
 num_to_plot = args.n
 gray_scale = (args.g == 1)
+low_band = (args.l == 1)
 center = (args.c == 1)
 overwrite = (args.w == 1)
 out_dir = args.o
@@ -74,12 +76,12 @@ for r in results:
 
     if overwrite or not os.path.exists(spec_path):
         print(f"Processing {spec_path}")
-        spec = util.expand_spectrogram(r.value)
+        spec = util.expand_spectrogram(r.value, low_band=low_band)
         if center:
             spec = util.center_spec(spec)
 
         num_plotted += 1
-        plot.plot_spec(spec, spec_path, gray_scale=gray_scale)
+        plot.plot_spec(spec, spec_path, gray_scale=gray_scale, low_band=low_band)
 
     if num_to_plot > 0 and num_plotted == num_to_plot:
         break
