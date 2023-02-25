@@ -88,6 +88,7 @@ class Analyzer:
         self.class_infos = self._get_class_infos()
         self.audio = audio.Audio()
         self._process_lat_lon_date()
+        self.species_handlers = species_handlers.Species_Handlers()
 
     # process latitude, longitude and date
     def _process_lat_lon_date(self):
@@ -252,7 +253,7 @@ class Analyzer:
         for i in range(len(self.offsets)):
             for j in range(len(self.class_infos)):
                     self.class_infos[j].probs.append(predictions[i][j])
-                    if (self.class_infos[j].probs[-1] >= cfg.min_prob):
+                    if self.class_infos[j].probs[-1] >= cfg.min_prob:
                         self.class_infos[j].has_label = True
 
     # get the list of spectrograms
@@ -299,13 +300,13 @@ class Analyzer:
         self._get_predictions(signal, rate)
 
         # do pre-processing for individual species
-        sh = species_handlers.Species_Handlers(self.class_infos, self.offsets, self.raw_spectrograms)
+        self.species_handlers.reset(self.class_infos, self.offsets, self.raw_spectrograms, self.audio)
         for class_info in self.class_infos:
-            if class_info.ignore or class_info.ebird_frequency_too_low or not class_info.has_label:
+            if class_info.ignore or class_info.ebird_frequency_too_low:
                 continue
 
-            if class_info.code in sh.handlers:
-                sh.handlers[class_info.code](class_info)
+            if class_info.code in self.species_handlers.handlers:
+                self.species_handlers.handlers[class_info.code](class_info)
 
         # generate labels for one class at a time
         min_adj_prob = cfg.min_prob * cfg.adjacent_prob_factor # in mode 0, adjacent segments need this prob at least
