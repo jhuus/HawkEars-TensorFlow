@@ -1,7 +1,4 @@
 # Download files for a given species from Xeno-Canto.
-# Optionally create output-folder/exclude.txt with list of file names to exclude
-# (i.e. ones already used for this species).
-
 
 import argparse
 import inspect
