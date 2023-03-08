@@ -16,20 +16,9 @@ from core import plot
 # mel scaling distorts amplitudes, so divide by this to compensate;
 # see gen_mel_adjustment.py for the code that generates these values
 
-# this table is for spec_height = 128
-adjust_mel_amplitude_128 = [
-    0.027535,0.027970,0.028387,0.033496,0.029787,0.029907,0.034109,0.033365,0.031747,0.038496,0.032048,0.040483,0.034425,0.040754,0.038629,0.038985,
-    0.043749,0.041999,0.042933,0.044365,0.045721,0.047000,0.048250,0.049407,0.050525,0.051583,0.052599,0.053557,0.056935,0.056725,0.057220,0.061665,
-    0.059748,0.063860,0.064301,0.065353,0.067451,0.070080,0.070942,0.072556,0.074714,0.076987,0.078040,0.079532,0.083154,0.083639,0.087098,0.087802,
-    0.090903,0.093527,0.095046,0.097454,0.100190,0.103046,0.104504,0.107881,0.110178,0.113631,0.115582,0.118764,0.121783,0.124639,0.127617,0.131809,
-    0.133528,0.137826,0.141227,0.144311,0.147876,0.152447,0.154864,0.159781,0.163070,0.167436,0.171540,0.175474,0.180503,0.184199,0.189320,0.194113,
-    0.198737,0.203105,0.209038,0.213551,0.219032,0.224439,0.230364,0.235701,0.241589,0.247416,0.254256,0.259819,0.266439,0.272926,0.280244,0.286657,
-    0.293751,0.301616,0.308465,0.316261,0.324171,0.332089,0.340515,0.348590,0.357682,0.366413,0.375351,0.384754,0.394475,0.403824,0.414084,0.424323,
-    0.434811,0.445567,0.456793,0.467964,0.479627,0.491572,0.503620,0.515996,0.529156,0.542049,0.555417,0.569471,0.583207,0.597816,0.612573,0.627649,
-]
-
-# this table is for spec_height = 256
-adjust_mel_amplitude_256 = [
+# this table assumes spec_height = 256, min_audio_freq = 200, max_audio_freq = 10500, etc;
+# generate a new table if you change audio parameters
+adjust_mel_amplitude = [
     0.026572,0.012701,0.037636,0.012452,0.028451,0.024592,0.015073,0.038828,0.016731,0.022519,0.034229,0.018634,0.025643,0.033347,0.020797,0.024337,
     0.036711,0.022809,0.023758,0.034431,0.029489,0.025575,0.026442,0.036213,0.030292,0.028078,0.028864,0.030484,0.038380,0.030363,0.031084,0.031775,
     0.032447,0.033103,0.038331,0.034675,0.034375,0.034971,0.035542,0.036115,0.036673,0.037223,0.037742,0.038256,0.038759,0.039244,0.039710,0.040178,
@@ -85,10 +74,7 @@ class Audio:
             mel.set_shape(spec.shape[:-1].concatenate(linear_to_mel_matrix.shape[-1:]))
             spec = np.transpose(mel)
             if cfg.mel_amplitude_adjustment:
-                if spec_height == 128:
-                    spec = (spec.T / adjust_mel_amplitude_128).T
-                else:
-                    spec = (spec.T / adjust_mel_amplitude_256).T
+                spec = (spec.T / adjust_mel_amplitude).T
         else:
             # linear frequency scale (used sometimes for plotting spectrograms)
             spec = cv2.resize(spec.numpy(), dsize=(spec_height, spec.shape[0]), interpolation=cv2.INTER_AREA)
@@ -226,7 +212,8 @@ class Audio:
             self.have_signal = True
             scale = 1.0 / float(1 << ((16) - 1))
             info = ffmpeg.probe(path)
-            if info['streams'][0]['channels'] == 1:
+
+            if not 'channels' in info['streams'][0].keys() or info['streams'][0]['channels'] == 1:
                 bytes, _ = (ffmpeg
                     .input(path)
                     .output('-', format='s16le', acodec='pcm_s16le', ac=1, ar=f'{cfg.sampling_rate}')
@@ -259,9 +246,9 @@ class Audio:
             self.have_signal = False
             tokens = e.stderr.decode().split('\n')
             if len(tokens) >= 2:
-                print(f'Caught exception in audio load: {tokens[-2]}')
+                logging.error(f'Caught exception in audio load: {tokens[-2]}')
             else:
-                print(f'Caught exception in audio load')
+                logging.error(f'Caught exception in audio load')
 
         logging.debug('Done loading audio file')
         return self.signal, cfg.sampling_rate
