@@ -120,8 +120,10 @@ class Main:
             os.makedirs(curr_folder)
 
         if self.num_to_plot is None:
+            shuffle = False
             num_to_plot = len(clusters[cluster_num])
         else:
+            shuffle = True # if plotting a specified number, pick them at random
             num_to_plot = min(self.num_to_plot, len(clusters[cluster_num]))
 
         specs = np.zeros((num_to_plot, cfg.spec_height, cfg.spec_width, 1))
@@ -129,16 +131,13 @@ class Main:
             offset = clusters[cluster_num][i]
             specs[i] = self.specs[offset].reshape((cfg.spec_height, cfg.spec_width, 1))
 
-        # for each spec, count the number of pixels > .02
-        counts = []
-        for i, spec in enumerate(specs):
-            count = (spec > .02).sum()
-            counts.append((i, count))
+        if shuffle:
+            indexes = util.get_rand_list(num_to_plot, num_to_plot - 1)
+        else:
+            indexes = [i for i in range(num_to_plot)]
 
-        # sort by count descending, then plot them in that order
-        sorted_counts = sorted(counts, key=lambda value: -value[1])
-        for i, count in enumerate(sorted_counts):
-            index = count[0]
+        for i in range(num_to_plot):
+            index = indexes[i]
             offset = clusters[cluster_num][index]
             curr_path = os.path.join(curr_folder, f'{i}~{self.spec_names[offset]}.png')
             if not os.path.exists(curr_path):
