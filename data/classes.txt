@@ -55,6 +55,7 @@ Bohemian Waxwing,BOWA
 Bonaparte's Gull,BOGU
 Boreal Chickadee,BOCH
 Boreal Owl,BOOW
+Brewer's Blackbird,BRBL
 Brewer's Sparrow,BRSP
 Broad-winged Hawk,BWHA
 Brown Creeper,BRCR
@@ -174,6 +175,7 @@ Pacific Wren,PAWR
 Pacific-slope Flycatcher,PSFL
 Palm Warbler,PAWA
 Peregrine Falcon,PEFA
+Philadelphia Vireo,PHVI
 Pied-billed Grebe,PBGR
 Pileated Woodpecker,PIWO
 Pine Grosbeak,PIGR
