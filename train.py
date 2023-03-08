@@ -86,8 +86,7 @@ class Trainer:
                     else:
                         self.plot_results(self.out_dir, history, 'accuracy')
 
-
-                if cfg.verbosity >= 1 and len(self.x_test) > 0:
+                if not cfg.multi_label and cfg.verbosity >= 1 and len(self.x_test) > 0:
                     text_output.write(f'Test loss: {scores[0]:.3f}\n')
                     text_output.write(f'Final test accuracy: {test_accuracy:.3f}\n')
                     text_output.write(f'Best test accuracy: {self.model_checkpoint_callback.best_val_accuracy:.4f}\n')
@@ -206,8 +205,9 @@ class Trainer:
         self.y_test = np.zeros((test_total, len(self.classes)))
         self.input_shape = (cfg.spec_height, cfg.spec_width, 1)
 
-        # populate from the database;
+        # populate from the database (this takes a while);
         # they will be selected randomly per mini batch, so no need to randomize here
+        logging.info('Reading spectrograms from database')
         train_index = 0
         test_index = 0
 
