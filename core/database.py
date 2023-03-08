@@ -76,16 +76,16 @@ class Database:
             cursor.execute(query)
 
             # Create indexes for efficiency
-            query = 'CREATE UNIQUE INDEX IF NOT EXISTS idx_subcategory_name ON Subcategory (Name)'
+            query = 'CREATE UNIQUE INDEX IF NOT EXISTS idx_subcategory ON Subcategory (Name)'
             cursor.execute(query)
 
-            query = 'CREATE INDEX IF NOT EXISTS idx_recording_subcategoryid ON Recording (SubcategoryID)'
+            query = 'CREATE INDEX IF NOT EXISTS idx_recording ON Recording (SubcategoryID)'
             cursor.execute(query)
 
-            query = 'CREATE INDEX IF NOT EXISTS idx_spectrogram_recordingid ON Spectrogram (RecordingID)'
+            query = 'CREATE INDEX IF NOT EXISTS idx_spectrogram_recid ON Spectrogram (RecordingID)'
             cursor.execute(query)
 
-            query = 'CREATE INDEX IF NOT EXISTS idx_spectrogram_ignore ON Spectrogram (Ignore)'
+            query = 'CREATE INDEX IF NOT EXISTS idx_spectrogram ON Spectrogram (Ignore, RecordingID)'
             cursor.execute(query)
 
             self.conn.commit()
