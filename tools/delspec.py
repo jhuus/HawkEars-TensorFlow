@@ -35,7 +35,8 @@ species_name = args.s
 recording_dict = {}
 results = db.get_recording_by_subcat_name(species_name)
 for r in results:
-    recording_dict[r.filename[:-4]] = r.id
+    tokens = r.filename.split('.')
+    recording_dict[tokens[0]] = r.id
 
 if Path(input).is_file():
     spec_names = util.get_file_lines(input)
