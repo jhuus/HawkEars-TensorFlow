@@ -248,8 +248,6 @@ if __name__ == '__main__':
 
     start_time = time.time()
 
-    # don't use high-pass filter in extract
-    cfg.high_pass_filter = False
     Main(args.a, args.b, args.c, source_dir, args.f, args.i, args.s, args.t, args.z, (args.l == 1)).run()
 
     elapsed = time.time() - start_time
