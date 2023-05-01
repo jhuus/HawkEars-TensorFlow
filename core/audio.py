@@ -46,7 +46,6 @@ class Audio:
     # width of spectrogram is determined by input signal length, and height = cfg.spec_height
     def _get_raw_spectrogram(self, signal, low_band=False):
         s = tf.signal.stft(signals=signal, frame_length=cfg.win_length, frame_step=cfg.hop_length, fft_length=2*cfg.win_length, pad_end=True)
-
         spec = tf.cast(tf.abs(s), tf.float32)
 
         if low_band:
@@ -61,7 +60,6 @@ class Audio:
             mel_scale = cfg.mel_scale
 
         # clip frequencies above max_audio_freq
-        num_freqs = spec.shape[1]
         clip_idx = int(2 * spec.shape[1] * max_freq / cfg.sampling_rate)
         spec = spec[:, :clip_idx]
 
