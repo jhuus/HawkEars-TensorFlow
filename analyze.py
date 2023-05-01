@@ -56,7 +56,7 @@ class ClassInfo:
         self.ebird_frequency_too_low = False
 
 class Analyzer:
-    def __init__(self, input_path, output_path, start_time, end_time, date_str, latitude, longitude, debug_mode, merge):
+    def __init__(self, input_path, output_path, start_time, end_time, date_str, latitude, longitude, region, debug_mode, merge):
 
         self.input_path = input_path
         self.start_seconds = self._get_seconds_from_time_string(start_time)
@@ -64,6 +64,7 @@ class Analyzer:
         self.date_str = date_str
         self.latitude = latitude
         self.longitude = longitude
+        self.region = region
         self.debug_mode = (debug_mode == 1)
         self.merge_labels = (merge == 1)
 
@@ -87,12 +88,14 @@ class Analyzer:
 
         self.class_infos = self._get_class_infos()
         self.audio = audio.Audio()
-        self._process_lat_lon_date()
+        self._process_location_and_date()
         self.species_handlers = species_handlers.Species_Handlers()
 
-    # process latitude, longitude and date
-    def _process_lat_lon_date(self):
-        if self.latitude is None or self.longitude is None:
+    # process latitude, longitude, region and date;
+    # a region is an alternative to lat/lon, and may specify an eBird county (e.g. CA-AB-FN)
+    # or province (e.g. CA-AB)
+    def _process_location_and_date(self):
+        if self.region is None and (self.latitude is None or self.longitude is None):
             self.check_frequency = False
             return
 
@@ -111,29 +114,54 @@ class Analyzer:
         freq_db = frequency_db.Frequency_DB()
         self.counties = freq_db.get_all_counties()
 
-        county = None
-        for c in self.counties:
-            if self.latitude >= c.min_y and self.latitude <= c.max_y and self.longitude >= c.min_x and self.longitude <= c.max_x:
-                county = c
-                break
-
-        if county is None:
-            logging.error(f'Error: no eBird county found matching given latitude and longitude')
-            quit()
+        counties = [] # list of corresponding eBird counties
+        if self.region is not None:
+            for c in self.counties:
+                if c.code.startswith(self.region):
+                    counties.append(c)
         else:
-            logging.info(f'Matching species in {county.name} ({county.code})')
+            # use latitude/longitude and just pick one eBird county
+            for c in self.counties:
+                if self.latitude >= c.min_y and self.latitude <= c.max_y and self.longitude >= c.min_x and self.longitude <= c.max_x:
+                    counties.append(c)
+                    break
 
-        # get the weekly frequency data per species
+        if len(counties) == 0:
+            if self.region is None:
+                logging.error(f'Error: no eBird county found matching given latitude and longitude')
+            else:
+                logging.error(f'Error: no eBird county found matching given region')
+            quit()
+        elif len(counties) == 1:
+            logging.info(f'Matching species in {counties[0].name} ({counties[0].code})')
+        else:
+            logging.info(f'Matching species in region {self.region}')
+
+        # get the weekly frequency data per species, where frequency is the
+        # percent of eBird checklists containing a species in a given county/week
         class_infos = {}
-        for peer_class_info in self.class_infos:
-            class_infos[peer_class_info.name] = peer_class_info
-            if not peer_class_info.ignore:
-                results = freq_db.get_frequencies(county.id, peer_class_info.name)
-                peer_class_info.frequency_dict = {}
-                peer_class_info.max_frequency = 0
-                for result in results:
-                    peer_class_info.max_frequency = max(peer_class_info.max_frequency, result.value)
-                    peer_class_info.frequency_dict[result.week_num] = result.value
+        for class_info in self.class_infos:
+            class_infos[class_info.name] = class_info # copy from list to dict for faster reference
+            if not class_info.ignore:
+                # get sums of weekly frequencies for this species across specified counties
+                frequency = [0 for i in range(48)] # eBird uses 4 weeks per month
+                for county in counties:
+                    results = freq_db.get_frequencies(county.id, class_info.name)
+                    for result in results:
+                        frequency[result.week_num - 1] += result.value
+
+                if len(counties) > 1:
+                    # get the average across counties
+                    for week_num in range(48):
+                        frequency[week_num] /= len(counties)
+
+                # update the info associated with this species
+                class_info.frequency = [0 for i in range(48)]
+                class_info.max_frequency = 0
+                for week_num in range(48):
+                    # if no date is specified we will use the maximum across all weeks
+                    class_info.max_frequency = max(class_info.max_frequency, frequency[week_num])
+                    class_info.frequency[week_num] = frequency[week_num]
 
         # process soundalikes (see comments in config.py);
         # start by identifying soundalikes at or below the cutoff frequency
@@ -160,7 +188,7 @@ class Analyzer:
                 class_info = class_infos[name]
                 class_info.name = max_peer_class_info.name
                 class_info.code = max_peer_class_info.code
-                class_info.frequency_dict = max_peer_class_info.frequency_dict
+                class_info.frequency = max_peer_class_info.frequency
                 class_info.max_frequency = max_peer_class_info.max_frequency
 
     # return week number in the range [1, 48] as used by eBird barcharts, i.e. 4 weeks per month
@@ -289,7 +317,7 @@ class Analyzer:
                 if self.week_num is None and not self.get_date_from_file_name:
                     if class_info.max_frequency < cfg.min_location_freq:
                         class_info.ebird_frequency_too_low = True
-                elif not self.week_num in class_info.frequency_dict or class_info.frequency_dict[self.week_num] < cfg.min_location_freq:
+                elif class_info.frequency[self.week_num - 1] < cfg.min_location_freq:
                     class_info.ebird_frequency_too_low = True
 
         signal, rate = self.audio.load(file_path)
@@ -392,8 +420,9 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', type=str, default='', help='Input path (single audio file or directory). No default.')
     parser.add_argument('--merge', type=int, default=1, help=f'Specify 0 to not merge adjacent labels of same species. Default = 1, i.e. merge.')
     parser.add_argument('--date', type=str, default=None, help=f'Date in yyyymmdd, mmdd, or file. Specifying file extracts the date from the file name, using the reg ex defined in config.py.')
-    parser.add_argument('--lat', type=float, default=None, help=f'Latitude')
-    parser.add_argument('--lon', type=float, default=None, help=f'Longitude')
+    parser.add_argument('--lat', type=float, default=None, help=f'Latitude. Use with longitude to identify an eBird county and ignore corresponding rarities.')
+    parser.add_argument('--lon', type=float, default=None, help=f'Longitude. Use with latitude to identify an eBird county and ignore corresponding rarities.')
+    parser.add_argument('-r', '--region', type=str, default=None, help=f'eBird region code, e.g. "CA-AB" for Alberta. Use as an alternative to latitude/longitude.')
     parser.add_argument('-m', '--min_freq', type=float, default=cfg.min_location_freq, help=f'Cutoff for location/date filtering')
     parser.add_argument('-o', '--output', type=str, default=None, help='Output directory to contain Audacity label files. Default is input directory.')
     parser.add_argument('-p', '--prob', type=float, default=cfg.min_prob, help=f'Minimum confidence level. Default = {cfg.min_prob}.')
@@ -417,7 +446,7 @@ if __name__ == '__main__':
     start_idx = 0
     while start_idx < len(file_list):
         end_idx = min(start_idx + cfg.analyze_group_size, len(file_list))
-        analyzer = Analyzer(args.input, args.output, args.start, args.end, args.date, args.lat, args.lon, args.debug, args.merge)
+        analyzer = Analyzer(args.input, args.output, args.start, args.end, args.date, args.lat, args.lon, args.region, args.debug, args.merge)
         p = Process(target=analyzer.run, args=((file_list[start_idx:end_idx],)))
         p.start()
         p.join()
