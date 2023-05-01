@@ -22,7 +22,7 @@ low_band_ckpt_name = 'ckpt_low_band'
 
 # training
 load_saved_model = False
-mixed_precision = True  # mixed precision trains faster with large models, but slower with tiny models
+mixed_precision = True  # mixed precision trains faster on GPU but slower on CPU (also may be slower with tiny models on GPU)
 multi_label = True
 save_best_only = False
 deterministic = False    # may reduce variance a bit, but still not deterministic
