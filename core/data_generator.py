@@ -48,7 +48,6 @@ class DataGenerator():
             spec = util.expand_spectrogram(self.x_train[id])
             label = self.y_train[id].astype(np.float32)
 
-            other_id = None
             if cfg.augmentation and cfg.multi_label and self.train_class[id] != 'Noise':
                 prob = random.uniform(0, 1)
 
@@ -100,7 +99,7 @@ class DataGenerator():
         other_id = self.indices[index]
 
         # loop until we get a different class
-        while self.train_class == class_name:
+        while self.train_class[other_id] == class_name:
             index = random.randint(0, len(self.indices) - 1)
             other_id = self.indices[index]
 
