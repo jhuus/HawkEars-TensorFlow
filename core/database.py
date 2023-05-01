@@ -82,6 +82,9 @@ class Database:
             query = 'CREATE INDEX IF NOT EXISTS idx_recording ON Recording (SubcategoryID)'
             cursor.execute(query)
 
+            query = 'CREATE INDEX IF NOT EXISTS idx_spectrogram_ignore ON Spectrogram (Ignore)'
+            cursor.execute(query)
+
             query = 'CREATE INDEX IF NOT EXISTS idx_spectrogram_recid ON Spectrogram (RecordingID)'
             cursor.execute(query)
 
@@ -658,7 +661,7 @@ class Database:
                 FROM Spectrogram
                 WHERE RecordingID in
                     (SELECT ID From Recording WHERE SubcategoryID =
-                        (SELECT ID FROM Subcategory WHERE NAME = "{subcategory_name}"))
+                        (SELECT ID FROM Subcategory WHERE Name = "{subcategory_name}"))
                 {extra_clause}
             '''
             cursor = self.conn.cursor()
