@@ -22,7 +22,7 @@ from core import database
 from core import util
 
 from model import model_checkpoint
-from model import resnest
+from model import efficientnet_v2, resnest
 
 class Trainer:
     def __init__(self):
@@ -111,6 +111,8 @@ class Trainer:
         strategy = tf.distribute.get_strategy()
         with strategy.scope():
             class_act = 'softmax' # single-label classifier
+
+            # surprisingly, ResNeST works a little better than EfficientNet_V2 here
             self.model = resnest.ResNest(
                     num_classes=len(self.classes),
                     input_shape=(cfg.low_band_spec_height, cfg.spec_width, 1),
@@ -118,7 +120,6 @@ class Trainer:
                     blocks_set=[3],
                     seed=1
             ).build_model(class_act)
-
             opt = keras.optimizers.Adam(learning_rate = cos_lr_schedule(0))
             if cfg.multi_label:
                 loss = keras.losses.BinaryCrossentropy(label_smoothing = cfg.label_smoothing)
@@ -207,8 +208,8 @@ if __name__ == '__main__':
 
     # command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', type=int, default=22, help=f'Minimum epochs before saving checkpoint.')
-    parser.add_argument('-e', type=int, default=22, help=f'Number of epochs.')
+    parser.add_argument('-c', type=int, default=20, help=f'Minimum epochs before saving checkpoint.')
+    parser.add_argument('-e', type=int, default=20, help=f'Number of epochs.')
     parser.add_argument('-f', type=str, default=cfg.training_db, help=f'Name of training database. Default = {cfg.training_db}.')
     parser.add_argument('-v', type=int, default=1, help='Verbosity (0-2, 0 is minimal, 2 includes graph of model). Default = 1.')
 
