@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 # this is necessary before importing from a peer directory
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
@@ -73,6 +74,9 @@ class Main:
         signal, rate = self.audio.load(path)
         seconds = len(signal) / rate
 
+        if self.input_path is None:
+            offsets = np.arange(0, seconds - cfg.segment_len, 1.5).tolist()
+
         filename = os.path.basename(path)
         index = filename.rfind('.')
         prefix = filename[:index]
@@ -105,7 +109,7 @@ class Main:
             print(f'processing {filename}')
 
             offsets = self._get_offsets(filename)
-            if len(offsets) == 0:
+            if self.input_path is not None and len(offsets) == 0:
                 continue
 
             curr_specs, curr_raw_specs = self._get_spectrograms(audio_file, offsets)
@@ -202,22 +206,24 @@ class Main:
 
         # get label/specs info unless we're generating labels
         self.offsets_dict = {}
-        if os.path.isfile(self.input_path):
-            for line in util.get_file_lines(self.input_path):
-                try:
-                    line = line.strip()
-                    if len(line) > 0:
-                        self._process_spec_name(line)
-                except:
-                    continue
-        else:
-            # input path must point to a directory of images
-            file_list = os.listdir(self.input_path)
-            print(f'Found {len(file_list)} files in {self.input_path}')
-            for file_name in file_list:
-                base, ext = os.path.splitext(file_name)
-                if ext == '.png':
-                    self._process_spec_name(base)
+        if not self.input_path is None:
+            # no input path means get all spectrograms at 1.5 second offsets
+            if os.path.isfile(self.input_path):
+                for line in util.get_file_lines(self.input_path):
+                    try:
+                        line = line.strip()
+                        if len(line) > 0:
+                            self._process_spec_name(line)
+                    except:
+                        continue
+            else:
+                # input path must point to a directory of images
+                file_list = os.listdir(self.input_path)
+                print(f'Found {len(file_list)} files in {self.input_path}')
+                for file_name in file_list:
+                    base, ext = os.path.splitext(file_name)
+                    if ext == '.png':
+                        self._process_spec_name(base)
 
         self._import_spectrograms()
         self._copy_files()
@@ -234,7 +240,7 @@ if __name__ == '__main__':
     parser.add_argument('-c', type=str, default='', help='Code (e.g. BAOR).')
     parser.add_argument('-d', type=str, default=None, help='Directory containing the audio files.')
     parser.add_argument('-f', type=str, default='training', help='Database name. Default = training')
-    parser.add_argument('-i', type=str, default='', help='Input text file or image directory')
+    parser.add_argument('-i', type=str, default=None, help='Input text file or image directory')
     parser.add_argument('-l', type=int, default=0, help='If 1, use low_band audio settings (for Ruffed Grouse drumming identifier)')
     parser.add_argument('-s', type=str, default='', help='Subcategory (e.g. "Baltimore Oriole").')
     parser.add_argument('-t', type=str, default=data_dir_env, help='Copy used audio files to a "bird code" directory under this, if specified')
