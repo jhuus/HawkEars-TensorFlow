@@ -108,15 +108,17 @@ class Trainer:
     # given the total number of spectrograms in a class, return a dict of randomly selected
     # indices to use for testing (indices not in the list are used for training)
     def get_test_indices(self, total, test_portion):
-        num_test = math.ceil(test_portion * total)
+        if test_portion is None:
+            return {}
+        else:
+            num_test = math.ceil(test_portion * total)
+            test_indices = {}
+            while len(test_indices.keys()) < num_test:
+                index = random.randint(0, total - 1)
+                if index not in test_indices:
+                    test_indices[index] = 1
 
-        test_indices = {}
-        while len(test_indices.keys()) < num_test:
-            index = random.randint(0, total - 1)
-            if index not in test_indices:
-                test_indices[index] = 1
-
-        return test_indices
+            return test_indices
 
     # calculate and return class weights
     def get_class_weight(self):
@@ -178,6 +180,7 @@ class Trainer:
             keras.utils.set_random_seed(cfg.seed)
 
         # count spectrograms and randomly select which to use for testing vs. training
+        logging.info('Counting spectrograms per class')
         num_spectrograms = []
         self.test_indices = []
         for i in range(len(self.classes)):
