@@ -24,10 +24,12 @@ from core import util
 # command-line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', type=str, default='', help='Directory containing the audio files. Subdirectory will be created for spectrograms.')
+parser.add_argument('-l', type=int, default=0, help='If 1, use low_band audio settings (for Ruffed Grouse drumming identifier)')
 parser.add_argument('-n', type=int, default=9, help='Length of spectrograms in integer seconds. Default = 9.')
 args = parser.parse_args()
 
 root_dir = args.d
+low_band = args.l == 1
 max_spec_len = args.n
 
 out_dir = os.path.join(root_dir, 'filespecs')
@@ -55,5 +57,5 @@ for file_name in os.listdir(root_dir):
         if width < cfg.spec_width:
             continue
 
-        specs = audio_obj.get_spectrograms([0], segment_len=spec_len)
+        specs = audio_obj.get_spectrograms([0], segment_len=spec_len, low_band=low_band)
         plot.plot_spec(specs[0], image_path)
