@@ -674,6 +674,19 @@ class Database:
         except sqlite3.Error as e:
             print(f'Error in database get_spectrogram_count: {e}')
 
+    def update_recording_source_id(self, id, new_source_id):
+        try:
+            query = '''
+                UPDATE Recording SET SourceID = ? WHERE ID = ?
+            '''
+            cursor = self.conn.cursor()
+            cursor.execute(query, (new_source_id, id))
+
+            self.conn.commit()
+            return cursor.lastrowid
+        except sqlite3.Error as e:
+            print(f'Error in database update_recording_source_id: {e}')
+
     def update_spectrogram(self, id, field, value):
         try:
             query = f'''
