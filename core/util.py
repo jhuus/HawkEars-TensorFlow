@@ -142,7 +142,7 @@ def get_rand_list(count, max_val):
 
     return list(values.keys())
 
-# return a source name given a file name
+# use simple heuristics to return a source name given a file name
 def get_source_name(filename):
     if filename is None or len(filename) == 0:
         return 'Unknown'
@@ -151,7 +151,7 @@ def get_source_name(filename):
         filename, _ = splitext(filename)
 
     if len(filename) > 5 and filename[0:4].isupper() and filename[4] == '_':
-        filename = filename[5:] # special case for validation files like RBGR_XC45678.mp3
+        filename = filename[5:] # special case for old validation files like RBGR_XC45678.mp3
 
     if filename.startswith('HNC'):
         return 'HNC'
@@ -159,12 +159,16 @@ def get_source_name(filename):
         return 'Xeno-Canto'
     elif filename[0] == 'N' and len(filename) > 1 and filename[1].isdigit():
         return 'iNaturalist'
-    elif filename[0].isalpha():
-        return 'Cornell Guide'
+    elif filename[0] == 'W' and len(filename) > 1 and filename[1].isdigit():
+        return 'Wildtrax'
     elif filename.isnumeric():
         return 'Macaulay Library'
     else:
-        return 'Youtube'
+        # distinguishing Cornell Guide and Youtube file names is a bit trickier
+        if ' ' in filename or (len(filename) > 2 and filename[0].isupper() and filename[1].islower() and filename[2].islower()):
+            return 'Cornell Guide'
+        else:
+            return 'Youtube'
 
 # return True iff given path is an audio file
 def is_audio_file(file_path):
