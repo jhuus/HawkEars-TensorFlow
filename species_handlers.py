@@ -15,12 +15,14 @@ class Species_Handlers:
         # update this dictionary to enable/disable handlers
         self.handlers = {
             'BWHA': self.check_soundalike,
+            'LALO': self.check_amplitude,
             'PIGR': self.check_amplitude,
             'RUGR': self.ruffed_grouse,
         }
 
         # handler parameters, so it's easy to use the same logic for multiple species
         self.check_amplitude_config = {
+            'LALO': SimpleNamespace(low_freq=.58, high_freq=.80, min_ratio=.15),
             'PIGR': SimpleNamespace(low_freq=.58, high_freq=.67, min_ratio=.15)
         }
 
