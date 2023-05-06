@@ -78,7 +78,8 @@ frequency_db = 'frequency'   # eBird barchart data, i.e. species report frequenc
 # but Black-capped Chickadees are common there, it will be reported as a Black-capped Chickadee.
 soundalike_cutoff = .005
 soundalikes = [['Black-capped Chickadee', 'Boreal Chickadee', 'Mountain Chickadee'],
-               ['Pacific Wren', 'Winter Wren']]
+               ['Pacific Wren', 'Winter Wren'],
+               ['Pine Warbler', 'Dark-eyed Junco']]
 
 # paths
 ignore_file = 'data/ignore.txt'     # classes listed in this file are ignored in analysis
